@@ -1,0 +1,16 @@
+# /etc/systemd/system/csl-frontend.service
+# Replace <user>, the paths and the node path (`which node`), then: sudo systemctl enable --now csl-frontend
+[Unit]
+Description=CSL frontend (Next.js)
+After=network.target
+
+[Service]
+User=<user>
+WorkingDirectory=/home/<user>/CSL/frontend
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3000
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

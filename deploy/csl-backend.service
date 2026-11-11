@@ -1,0 +1,16 @@
+# /etc/systemd/system/csl-backend.service
+# Replace <user> and the paths, then: sudo systemctl enable --now csl-backend
+[Unit]
+Description=CSL backend (FastAPI)
+After=network.target
+
+[Service]
+User=<user>
+WorkingDirectory=/home/<user>/CSL/backend
+# One worker only: sessions live in this process's memory. Reads backend/.env.
+ExecStart=/home/<user>/CSL/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

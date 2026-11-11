@@ -1,0 +1,638 @@
+{
+ "topic": {
+  "ko": "여름은 왜 겨울보다 더운가?",
+  "en": "Why is summer hotter than winter?"
+ },
+ "init": {
+  "question": {
+   "ko": "여름이 겨울보다 더운 이유를 아는 만큼 한 문장으로 설명해주세요.",
+   "en": "Explain why summer is hotter than winter in one sentence, as far as you know."
+  },
+  "closing": {
+   "ko": "'더 많이' 받는다는 게 정확히 무엇인지가 핵심이네요. 이 지점을 중심으로 학습 세션을 구성할게요.",
+   "en": "The key question is what exactly 'more' sunlight means. I'll build the learning session around this point."
+  }
+ },
+ "focus": {
+  "ko": "햇빛을 '더 많이' 받는다는 것은 정확히 무엇을 뜻하는가?",
+  "en": "What exactly does receiving 'more' sunlight mean?"
+ },
+ "participants": [
+  {
+   "id": "tutor",
+   "role": "tutor",
+   "name": "Tutor",
+   "origin": {
+    "ko": "진행·검증 역할",
+    "en": "Facilitation & verification"
+   },
+   "description": {
+    "ko": "토론을 지켜보다가 오개념이 굳어질 때만 개입합니다.",
+    "en": "Listens, and steps in only when a misconception is being reinforced."
+   }
+  },
+  {
+   "id": "peer1",
+   "role": "peer",
+   "name": "Peer 1",
+   "origin": {
+    "ko": "이 주제의 흔한 오개념에서 생성 (공전 거리)",
+    "en": "Generated from a common misconception on this topic (orbital distance)"
+   },
+   "description": {
+    "ko": "\"공전하면서 태양에 가까워진다\"고 생각하는 학생",
+    "en": "A student who thinks \"Earth gets closer to the Sun as it orbits\""
+   }
+  },
+  {
+   "id": "peer2",
+   "role": "peer",
+   "name": "Peer 2",
+   "origin": {
+    "ko": "내 설명에서 생성 (\"기울어서 가까워진다\")",
+    "en": "Generated from your explanation (\"tilt brings us closer\")"
+   },
+   "description": {
+    "ko": "\"기울어서 태양에 가까워진다\"고 생각하는 학생",
+    "en": "A student who thinks \"the tilt brings us closer to the Sun\""
+   }
+  }
+ ],
+ "initialStates": {
+  "peer1": {
+   "beliefs": [
+    {
+     "ko": "지구는 타원 궤도로 태양 주위를 공전한다.",
+     "en": "Earth orbits the Sun on an elliptical path."
+    },
+    {
+     "ko": "한국은 여름에 덥고 겨울에 춥다.",
+     "en": "Korea has hotter summers and colder winters."
+    }
+   ],
+   "explanation": {
+    "ko": "난로에 가까이 가면 따뜻해지듯, 지구가 태양에 가까워져 여름이 된다. 햇빛의 각도나 낮 길이가 계절을 만드는 원리는 모른다.",
+    "en": "Summer occurs when Earth is closer to the Sun, like standing closer to a heater. Does not know how sunlight angle or day length explains seasons."
+   }
+  },
+  "peer2": {
+   "beliefs": [
+    {
+     "ko": "자전축은 약 23.5° 기울어져 있다.",
+     "en": "Earth's axis is tilted about 23.5°."
+    },
+    {
+     "ko": "북반구와 남반구의 계절은 반대다.",
+     "en": "The hemispheres have opposite seasons."
+    },
+    {
+     "ko": "여름에는 낮이 길다.",
+     "en": "Summer days are longer."
+    }
+   ],
+   "explanation": {
+    "ko": "북반구가 태양 쪽으로 기울면 더 가까워져 더워진다. 기울기가 햇빛의 각도와 낮 길이에 미치는 영향은 이해하지 못한다.",
+    "en": "Tilting toward the Sun brings the Northern Hemisphere closer and makes it warmer. Does not understand the effects on sunlight angle or day length."
+   }
+  }
+ },
+ "turns": [
+  {
+   "key": "1",
+   "speaker": "peer1",
+   "text": {
+    "ko": "여름에는 지구가 태양에 가까워져서 더운 거 아닐까요? 궤도가 타원이라 거리가 달라지잖아요.",
+    "en": "Isn't summer hotter because Earth is closer to the Sun? Its orbit is elliptical, so the distance changes."
+   },
+   "changes": [],
+   "inviteUser": false
+  },
+  {
+   "key": "2",
+   "speaker": "peer2",
+   "text": {
+    "ko": "그런데 한국이 여름일 때 호주는 겨울이래요. 지구 전체가 가까워지면 같이 더워져야 하지 않을까요? 저는 자전축이 기울어서 북반구만 가까워지는 거라고 생각했어요.",
+    "en": "But Australia has winter when Korea has summer. Wouldn't both get warmer if the whole Earth moved closer? I thought the tilted axis brings just the Northern Hemisphere closer."
+   },
+   "changes": [],
+   "inviteUser": false
+  },
+  {
+   "key": "3",
+   "speaker": "peer1",
+   "text": {
+    "ko": "호주는 생각 못 했네요. 그럼 지구 전체의 거리보다 어느 반구가 태양에 가까운지가 중요한 걸까요?",
+    "en": "I hadn't thought about Australia. Then maybe what matters is which hemisphere is closer, rather than the distance of the whole Earth?"
+   },
+   "changes": [
+    "SC-01",
+    "SC-02",
+    "SC-03"
+   ],
+   "inviteUser": false
+  },
+  {
+   "key": "4",
+   "speaker": "peer2",
+   "text": {
+    "ko": "그럴 것 같아요. 북반구가 가까워지고 남반구가 멀어지면, 계절이 반대인 것도 설명되고요.",
+    "en": "That seems possible. If the north tilts closer and the south farther away, that would explain their opposite seasons."
+   },
+   "changes": [],
+   "inviteUser": false
+  },
+  {
+   "key": "5",
+   "speaker": "tutor",
+   "text": {
+    "ko": "두 설명 모두 거리에 기대고 있네요. 그런데 지구가 태양에 가장 가까운 건 1월 초이고, 기울기로 생기는 거리 차이는 태양까지 약 1억 5천만km에 비하면 아주 작아요. 표면이 기울면 거리 외에 무엇이 달라질까요?",
+    "en": "Both explanations rely on distance. But Earth is closest to the Sun in early January, and the distance difference caused by tilt is tiny compared with the roughly 150 million km to the Sun. What else might change when a surface tilts?"
+   },
+   "changes": [],
+   "inviteUser": false
+  },
+  {
+   "key": "6",
+   "speaker": "peer1",
+   "text": {
+    "ko": "1월이면 한국은 겨울인데, 제가 생각한 시기부터 안 맞네요. 거리가 달라지는 건 사실이어도 그걸로 여름을 설명할 수는 없겠어요.",
+    "en": "January is winter in Korea, so even the timing of my explanation is wrong. Distance does change, but that doesn't explain our summer."
+   },
+   "changes": [
+    "SC-04",
+    "SC-05",
+    "SC-06"
+   ],
+   "inviteUser": false
+  },
+  {
+   "key": "7",
+   "speaker": "peer2",
+   "text": {
+    "ko": "저도 가까워진다는 것만 생각했어요. 그 차이가 너무 작다면 왜 기울기가 중요할까요? 햇빛이 땅에 닿는 각도가 달라지는 걸까요?",
+    "en": "I only thought about getting closer, too. If that difference is too small, why does tilt matter? Maybe sunlight reaches the ground at a different angle?"
+   },
+   "changes": [
+    "SC-07",
+    "SC-08",
+    "SC-09"
+   ],
+   "inviteUser": false
+  },
+  {
+   "key": "8",
+   "speaker": "peer1",
+   "text": {
+    "ko": "비스듬하게 들어오면 땅에 닿을 때까지 더 긴 길을 오는 건가요? 그래서 빛이 약해지는 걸까요?",
+    "en": "If it arrives at a slant, does it take a longer route to the ground? Maybe that makes the light weaker?"
+   },
+   "changes": [
+    "SC-10"
+   ],
+   "inviteUser": false
+  },
+  {
+   "key": "9",
+   "speaker": "peer2",
+   "text": {
+    "ko": "아, 그럼 결국 빛이 더 멀리 와서 약해지는 건가 보네요. 제가 처음 생각한 설명과 비슷한 것 같아요.",
+    "en": "Oh, so it is still about light travelling farther and becoming weaker? That sounds similar to what I thought before."
+   },
+   "changes": [
+    "SC-11"
+   ],
+   "inviteUser": false
+  },
+  {
+   "key": "10",
+   "speaker": "tutor",
+   "text": {
+    "ko": "다시 거리 설명으로 돌아왔네요. 거리와 빛의 양을 같게 두고, 손전등 빛이 평평한 면에 똑바로 닿을 때와 비스듬히 닿을 때를 상상해 봅시다. 빛이 닿는 면적은 어떻게 될까요?",
+    "en": "We're returning to distance again. Keep the distance and the amount of light the same: imagine a flashlight beam hitting a flat surface straight on, then at a slant. What might happen to the area it lights up?"
+   },
+   "changes": [],
+   "inviteUser": false
+  },
+  {
+   "key": "11",
+   "speaker": "peer1",
+   "text": {
+    "ko": "비스듬하면 빛이 닿은 자리가 길게 늘어날 것 같아요. 빛이 약해진 게 아니라 같은 빛이 더 넓게 퍼지는 걸까요?",
+    "en": "I think the slanted patch would stretch out. So perhaps the light hasn't become weaker; the same light is spread over a larger area?"
+   },
+   "changes": [
+    "SC-12"
+   ],
+   "inviteUser": false
+  },
+  {
+   "key": "12",
+   "speaker": "peer2",
+   "text": {
+    "ko": "그러면 같은 크기의 땅은 빛을 덜 받겠네요. 여름에 햇빛이 더 수직에 가깝게 들어온다면 같은 땅이 더 많은 에너지를 받을 수 있겠어요.",
+    "en": "Then an equal-sized piece of ground would receive less of it. If summer sunlight arrives more directly, the same patch of ground could receive more energy."
+   },
+   "changes": [
+    "SC-13"
+   ],
+   "inviteUser": false
+  },
+  {
+   "key": "13",
+   "speaker": "peer1",
+   "text": {
+    "ko": "그러면 거리가 거의 같아도 차이가 생기겠네요. 여름에는 해도 늦게 지잖아요? 빛이 더 모여 들어오는 것과 더 오래 들어오는 게 함께 중요한 걸까요?",
+    "en": "That could make a difference even at almost the same distance. Summer also has later sunsets, doesn't it? Could both more concentrated light and more time in sunlight matter?"
+   },
+   "changes": [
+    "SC-14"
+   ],
+   "inviteUser": false
+  },
+  {
+   "key": "14",
+   "speaker": "peer2",
+   "text": {
+    "ko": "그럴 것 같아요. 다만 자전축이 기울어진 것에서 두 변화가 어떻게 나오는지는 아직 연결이 안 돼요. 지구가 자전할 때 왜 여름에는 우리 지역이 햇빛 속에 더 오래 있는 걸까요?",
+    "en": "That sounds possible. But I still can't connect the tilted axis to both changes. As Earth rotates, why would our location spend longer in sunlight in summer?"
+   },
+   "changes": [
+    "SC-15",
+    "SC-16"
+   ],
+   "inviteUser": false
+  },
+  {
+   "key": "15",
+   "speaker": "tutor",
+   "text": {
+    "ko": "두 분이 거리 대신 빛이 닿는 면적과 시간까지 찾아냈네요. 이제 참여자분이 연결해 주실래요? 자전축 기울기와 자전으로 한국의 여름에 햇빛의 각도와 낮 길이가 어떻게 달라지는지 두 학생에게 설명해 주세요.",
+    "en": "You've moved from distance to the area receiving light and the time it receives it. Could you help connect those ideas for us? Explain to the two peers how Earth's tilt and rotation change sunlight angle and day length in Korea's summer."
+   },
+   "changes": [],
+   "inviteUser": true
+  }
+ ],
+ "aside": [
+  {
+   "key": "Q2",
+   "speaker": "tutor",
+   "text": {
+    "ko": "자전축은 지구가 자전하는 기준이 되는, 북극과 남극을 잇는 가상의 선이에요. 이 선이 지구의 공전 궤도면에 수직인 방향에서 기울어져 있다는 뜻이에요.",
+    "en": "Earth’s axis is an imaginary line through the North and South Poles that Earth spins around. The tilt means that this line leans away from the direction perpendicular to the plane of Earth’s orbit around the Sun."
+   },
+   "changes": []
+  },
+  {
+   "key": "Q3",
+   "speaker": "peer1",
+   "text": {
+    "ko": "기울어져 있다는 뜻은 알겠어요. 그러면 그 때문에 북반구가 태양에 가까워져서 더워진다는 설명도 맞나요?",
+    "en": "I understand what “tilted” means now. But does that mean our explanation is right—that the Northern Hemisphere gets warmer because the tilt brings it closer to the Sun?"
+   },
+   "changes": []
+  }
+ ],
+ "stateChanges": {
+  "SC-01": {
+   "agent": "peer1",
+   "field": "beliefs",
+   "add": {
+    "ko": "한국이 여름일 때 호주는 겨울이다.",
+    "en": "Australia has winter during Korea's summer."
+   }
+  },
+  "SC-02": {
+   "agent": "peer1",
+   "field": "explanation",
+   "after": {
+    "ko": "지구 전체의 공전 거리 설명에 의문을 품고, 자전축 기울기로 한쪽 반구가 더 가까워진다는 대안을 잠정적으로 검토한다.",
+    "en": "Questions the whole-Earth orbital account and tentatively considers whether tilt brings one hemisphere closer instead."
+   },
+   "accuracy": "incorrect"
+  },
+  "SC-03": {
+   "agent": "peer1",
+   "field": "openQuestions",
+   "after": {
+    "ko": "거리 설명으로 두 반구의 계절이 반대인 것을 어떻게 설명할 수 있을까?",
+    "en": "How can a distance-based explanation account for opposite seasons in the hemispheres?"
+   }
+  },
+  "SC-04": {
+   "agent": "peer1",
+   "field": "beliefs",
+   "add": {
+    "ko": "지구는 1월 초에 태양에 가장 가깝다.",
+    "en": "Earth is closest to the Sun in early January."
+   }
+  },
+  "SC-05": {
+   "agent": "peer1",
+   "field": "explanation",
+   "after": {
+    "ko": "처음의 공전 거리 설명만으로는 한국의 여름을 설명할 수 없다고 판단한다. 반구별 거리 설명은 아직 확인되지 않았으며, 충분한 대안도 확립하지 못했다.",
+    "en": "Rejects the original orbital-distance account as sufficient. The hemisphere-distance suggestion remains unconfirmed; no adequate replacement has been established."
+   },
+   "accuracy": "incorrect"
+  },
+  "SC-06": {
+   "agent": "peer1",
+   "field": "openQuestions",
+   "after": {
+    "ko": "공전에 따른 지구-태양 거리 변화만으로 부족하다면, 한국의 여름이 더운 이유를 무엇으로 설명할 수 있을까?",
+    "en": "What adequately explains Korea's summer if changing Earth-Sun orbital distance is insufficient?"
+   }
+  },
+  "SC-07": {
+   "agent": "peer2",
+   "field": "beliefs",
+   "add": {
+    "ko": "기울기로 생기는 거리 차이는 태양까지의 거리에 비해 매우 작다.",
+    "en": "The distance difference caused by tilt is tiny compared with the distance to the Sun."
+   }
+  },
+  "SC-08": {
+   "agent": "peer2",
+   "field": "explanation",
+   "after": {
+    "ko": "기울기에 따른 거리 차이 설명을 철회하고, 햇빛의 각도가 중요할 수 있다고 잠정적으로 제안한다. 각도가 가열에 영향을 주는 원리는 아직 설명하지 못한다.",
+    "en": "Withdraws the tilt-distance mechanism and tentatively proposes sunlight angle as relevant, without yet explaining its heating effect."
+   },
+   "accuracy": "incorrect"
+  },
+  "SC-09": {
+   "agent": "peer2",
+   "field": "openQuestions",
+   "after": {
+    "ko": "기울기에 따른 거리 차이가 너무 작다면, 왜 자전축 기울기가 계절별 가열에 중요할까?",
+    "en": "Why does tilt matter for seasonal heating if its distance effect is too small?"
+   }
+  },
+  "SC-10": {
+   "agent": "peer1",
+   "field": "explanation",
+   "after": {
+    "ko": "비스듬한 햇빛은 더 먼 거리를 오기 때문에 약해질 수 있다고 잠정적으로 추측한다.",
+    "en": "Tentatively proposes that slanted sunlight travels farther and therefore becomes weaker."
+   },
+   "accuracy": "incorrect"
+  },
+  "SC-11": {
+   "agent": "peer2",
+   "field": "explanation",
+   "after": {
+    "ko": "Peer 1의 이동 거리 설명을 햇빛 각도의 영향을 설명할 수 있는 가능성으로 검토한다. 아직 잠정적인 가설이다.",
+    "en": "Entertains Peer 1's longer-travel mechanism as a possible explanation of the angle effect; this remains tentative."
+   },
+   "accuracy": "incorrect"
+  },
+  "SC-12": {
+   "agent": "peer1",
+   "field": "explanation",
+   "after": {
+    "ko": "이동 거리가 길어져 빛이 약해진다는 설명을 제쳐 두고, 같은 양의 빛이 더 넓은 면적에 퍼진다는 설명을 잠정적으로 제안한다.",
+    "en": "Tentatively proposes that the same amount of light spreads over a larger area, setting aside the longer-travel account."
+   },
+   "accuracy": "partial"
+  },
+  "SC-13": {
+   "agent": "peer2",
+   "field": "explanation",
+   "after": {
+    "ko": "같은 에너지가 더 넓은 땅에 퍼지면 같은 크기의 땅이 받는 에너지는 줄어든다는 관계를 설명한다. 여름에 햇빛이 더 수직에 가깝게 들어온다면 더 많은 에너지를 받을 수 있다는 조건부 적용이며, 자전축 기울기와의 연결은 아직 설명하지 못한다.",
+    "en": "Uses the area-energy relationship: spreading the same energy over more ground gives less energy per equal-sized patch. The summer application remains conditional on sunlight arriving more directly; the connection from tilt is unexplained."
+   },
+   "accuracy": "partial"
+  },
+  "SC-14": {
+   "agent": "peer1",
+   "field": "explanation",
+   "after": {
+    "ko": "13턴에서 떠올린 늦은 일몰을 근거로, 빛이 더 집중되는 것과 더 오래 비치는 것이 함께 여름의 더위에 기여할 수 있다고 잠정적으로 생각한다. 자전축 기울기와의 연결은 아직 해결하지 못했다.",
+    "en": "Tentatively combines more concentrated sunlight and longer exposure as contributors to summer warmth, drawing on the later-sunset observation recalled at T13. The connection to tilt remains unresolved."
+   },
+   "accuracy": "partial"
+  },
+  "SC-15": {
+   "agent": "peer2",
+   "field": "explanation",
+   "after": {
+    "ko": "집중된 햇빛과 함께 긴 낮도 가열에 기여할 수 있다고 잠정적으로 생각한다. 자전축 기울기가 계절별 햇빛 각도와 낮 길이 차이를 만드는 원리는 아직 연결하지 못한다.",
+    "en": "Provisionally incorporates longer daylight alongside concentrated sunlight as contributors to heating. Still cannot connect tilt to the seasonal angle and daylight differences."
+   },
+   "accuracy": "partial"
+  },
+  "SC-16": {
+   "agent": "peer2",
+   "field": "openQuestions",
+   "after": {
+    "ko": "자전축 기울기가 계절별 햇빛 각도를 어떻게 바꿀까? 지구가 자전할 때 왜 여름에는 우리 지역이 햇빛 속에 더 오래 있을까?",
+    "en": "How does tilt change seasonal sunlight angle? Why does a rotating location spend longer in daylight during summer?"
+   }
+  }
+ },
+ "branches": {
+  "A": {
+   "turns": [
+    {
+     "speaker": "peer2",
+     "text": {
+      "ko": "아, 축이 기울어진 채로 도니까 여름엔 태양이 더 높이 뜨고, 그래서 빛이 더 모여 들어오는 거군요.",
+      "en": "Oh, so because the axis stays tilted while Earth orbits, the Sun rises higher in summer, and that's why the light comes in more concentrated."
+     }
+    },
+    {
+     "speaker": "peer1",
+     "text": {
+      "ko": "그리고 높이 뜬 만큼 지평선 위에 더 오래 있으니까 낮도 길어지고요. 거리 얘기는 애초에 필요가 없었네요.",
+      "en": "And since it's higher, it stays above the horizon longer, so the days get longer too. We never needed the distance explanation at all."
+     }
+    },
+    {
+     "speaker": "tutor",
+     "text": {
+      "ko": "두 변화가 자전축 하나에서 나온다는 걸 연결해 주셨네요. 그럼 가장 더운 날이 왜 하지가 아니라 8월인지도 궁금해지는데요?",
+      "en": "You've connected both changes back to a single cause — the tilt. Now I'm curious: why is the hottest day in August rather than on the solstice?"
+     },
+     "end": true
+    }
+   ],
+   "changes": [
+    {
+     "agent": "peer1",
+     "field": "explanation",
+     "after": {
+      "ko": "자전축 기울기로 여름엔 햇빛이 더 수직에 가깝게, 더 오래 들어와 같은 땅이 더 많은 에너지를 받는다. 거리는 원인이 아니다.",
+      "en": "Because of axial tilt, summer sunlight arrives closer to perpendicular and for longer, so the same patch of ground receives more energy. Distance is not the cause."
+     },
+     "accuracy": "correct"
+    },
+    {
+     "agent": "peer1",
+     "field": "openQuestions",
+     "after": {
+      "ko": "왜 가장 더운 시기는 하지보다 늦을까?",
+      "en": "Why does the hottest period come after the solstice?"
+     }
+    },
+    {
+     "agent": "peer2",
+     "field": "explanation",
+     "after": {
+      "ko": "자전축 기울기로 여름엔 햇빛이 더 수직에 가깝게, 더 오래 들어와 같은 땅이 더 많은 에너지를 받는다. 거리는 원인이 아니다.",
+      "en": "Because of axial tilt, summer sunlight arrives closer to perpendicular and for longer, so the same patch of ground receives more energy. Distance is not the cause."
+     },
+     "accuracy": "correct"
+    },
+    {
+     "agent": "peer2",
+     "field": "openQuestions",
+     "after": {
+      "ko": "왜 가장 더운 시기는 하지보다 늦을까?",
+      "en": "Why does the hottest period come after the solstice?"
+     }
+    }
+   ]
+  },
+  "B1": {
+   "turns": [
+    {
+     "speaker": "peer1",
+     "text": {
+      "ko": "빛이 더 똑바로 들어와서 같은 땅에 더 모인다는 건 이해됐어요.",
+      "en": "I get that the light comes in more directly, so more of it lands on the same patch of ground."
+     }
+    },
+    {
+     "speaker": "peer2",
+     "text": {
+      "ko": "그런데 낮이 길어지는 건요? 아까 여름엔 해가 늦게 진다고 했는데, 그것도 기울기 때문인지 아직 모르겠어요.",
+      "en": "But what about the days getting longer? Earlier we said the Sun sets later in summer — I still don't know if that's because of the tilt too."
+     }
+    },
+    {
+     "speaker": "tutor",
+     "text": {
+      "ko": "(mock) 햇빛 각도는 잘 연결해 주셨어요. 낮 길이가 자전축 기울기에서 어떻게 나오는지도 이어서 설명해 주실래요?",
+      "en": "(mock) You connected the sunlight angle well. Could you also explain how day length follows from the tilt?"
+     },
+     "inviteUser": true
+    }
+   ],
+   "changes": [
+    {
+     "agent": "peer1",
+     "field": "explanation",
+     "after": {
+      "ko": "자전축 기울기로 햇빛이 더 수직에 가깝게 들어와 같은 땅이 더 많은 에너지를 받는다. 낮 길이와의 연결은 아직 없다.",
+      "en": "Because of axial tilt, sunlight arrives closer to perpendicular, so the same patch of ground receives more energy. Not yet connected to day length."
+     },
+     "accuracy": "partial"
+    },
+    {
+     "agent": "peer2",
+     "field": "explanation",
+     "after": {
+      "ko": "자전축 기울기로 햇빛이 더 수직에 가깝게 들어와 같은 땅이 더 많은 에너지를 받는다. 낮 길이와의 연결은 아직 없다.",
+      "en": "Because of axial tilt, sunlight arrives closer to perpendicular, so the same patch of ground receives more energy. Not yet connected to day length."
+     },
+     "accuracy": "partial"
+    },
+    {
+     "agent": "peer2",
+     "field": "openQuestions",
+     "after": {
+      "ko": "지구가 자전할 때 왜 여름에는 우리 지역이 햇빛 속에 더 오래 있을까?",
+      "en": "As Earth rotates, why does our location spend longer in sunlight in summer?"
+     }
+    }
+   ]
+  },
+  "B2": {
+   "turns": [
+    {
+     "speaker": "peer2",
+     "text": {
+      "ko": "기울어진 쪽이 자전하면서 햇빛 속에 더 오래 있다는 건 알겠어요.",
+      "en": "I see — the tilted side stays in sunlight longer as Earth rotates."
+     }
+    },
+    {
+     "speaker": "peer1",
+     "text": {
+      "ko": "그럼 비스듬히 들어오는 건 결국 상관없는 거예요? 아까 손전등 얘기는 어디로 간 거죠?",
+      "en": "So does the slanted angle not matter after all? What happened to the flashlight thing from earlier?"
+     }
+    },
+    {
+     "speaker": "tutor",
+     "text": {
+      "ko": "(mock) 낮 길이는 잘 연결해 주셨어요. 햇빛이 들어오는 각도가 기울기와 어떻게 이어지는지도 설명해 주실래요?",
+      "en": "(mock) You connected day length well. Could you also explain how the angle of sunlight follows from the tilt?"
+     },
+     "inviteUser": true
+    }
+   ],
+   "changes": [
+    {
+     "agent": "peer1",
+     "field": "explanation",
+     "after": {
+      "ko": "자전축 기울기로 여름엔 낮이 길어 가열 시간이 늘어난다. 햇빛 각도와의 연결은 아직 없다.",
+      "en": "Because of axial tilt, summer days are longer, so there is more heating time. Not yet connected to sunlight angle."
+     },
+     "accuracy": "partial"
+    },
+    {
+     "agent": "peer2",
+     "field": "explanation",
+     "after": {
+      "ko": "자전축 기울기로 여름엔 낮이 길어 가열 시간이 늘어난다. 햇빛 각도와의 연결은 아직 없다.",
+      "en": "Because of axial tilt, summer days are longer, so there is more heating time. Not yet connected to sunlight angle."
+     },
+     "accuracy": "partial"
+    },
+    {
+     "agent": "peer1",
+     "field": "openQuestions",
+     "after": {
+      "ko": "자전축 기울기가 햇빛 각도를 어떻게 바꿀까?",
+      "en": "How does axial tilt change the angle of sunlight?"
+     }
+    }
+   ]
+  },
+  "C": {
+   "turns": [
+    {
+     "speaker": "peer1",
+     "text": {
+      "ko": "그건 아까 1월 얘기로 안 되는 거 아니었나요? 가장 가까울 때가 겨울이잖아요.",
+      "en": "Didn't we already rule that out with the January thing? Earth is closest in winter."
+     }
+    },
+    {
+     "speaker": "peer2",
+     "text": {
+      "ko": "저희가 찾은 건 빛이 닿는 면적이랑 시간이었어요. 그 두 개를 기울기랑 어떻게 이으면 될까요?",
+      "en": "What we found was the area the light hits and the time it hits for. How do we connect those two to the tilt?"
+     }
+    },
+    {
+     "speaker": "tutor",
+     "text": {
+      "ko": "(mock) 햇빛의 각도와 낮 길이를 자전축 기울기와 연결해서 다시 설명해 볼까요?",
+      "en": "(mock) Could you try again, connecting sunlight angle and day length to the axial tilt?"
+     },
+     "inviteUser": true
+    }
+   ],
+   "changes": []
+  }
+ },
+ "interjectionReply": {
+  "ko": "(mock) 좋은 지적이에요. 실제 파이프라인에서는 여기서 에이전트들이 방금 하신 말에 반응합니다. 토론을 이어갈게요.",
+  "en": "(mock) Good point. In the real pipeline the agents respond to what you just said here. Let us continue the discussion."
+ }
+}

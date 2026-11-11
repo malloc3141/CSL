@@ -1,0 +1,6 @@
+# Caddy gets and renews the certificate by itself.
+csl.example.com {
+	@backend path /api/* /ws/*
+	reverse_proxy @backend 127.0.0.1:8000
+	reverse_proxy 127.0.0.1:3000
+}
