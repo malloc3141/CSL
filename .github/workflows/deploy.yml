@@ -1,0 +1,53 @@
+# Every push to main is tested and deployed to https://csl.kimhm.in.
+#
+# Runs on the self-hosted runner on the Oracle server (Linux user `csl`, label `csl-deploy`).
+# 1. Check out the pushed commit into the runner's workspace, run the backend tests and build the
+#    frontend there. If either fails, the live site is not touched.
+# 2. deploy/deploy.sh moves the server checkout (/home/csl/CSL) to that commit, rebuilds in place and
+#    restarts both services, then checks /api/health and /dev.
+#
+# Re-run by hand: Actions tab -> Deploy -> Run workflow.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a newer push waits for the running one instead of cancelling it mid-restart.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, csl-deploy]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Backend tests
+        working-directory: backend
+        run: |
+          uv sync --extra dev
+          uv run pytest -q
+
+      - name: Frontend build check
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_CSL_API_URL: https://csl.kimhm.in
+        run: |
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm build
+
+      - name: Deploy
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOY_DIR: /home/csl/CSL
+        run: bash deploy/deploy.sh "$GITHUB_SHA"

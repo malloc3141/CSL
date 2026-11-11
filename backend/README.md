@@ -94,6 +94,16 @@ Update: `git pull`, then `uv sync` in `backend/`, `pnpm install --frozen-lockfil
 `frontend/`, then `sudo systemctl restart csl-backend csl-frontend`. Sessions survive the restart.
 Logs: `journalctl -u csl-backend -f`.
 
+### Continuous deployment
+
+On the course server this is automated: every push to `main` runs `.github/workflows/deploy.yml` on a
+self-hosted GitHub Actions runner on that server. The workflow runs the backend tests and a frontend
+build in the runner's workspace first; only if both pass does `deploy/deploy.sh` move the server checkout
+to the pushed commit, rebuild, restart both services and check `/api/health` and `/dev`. A failing
+test or build therefore leaves the live site as it was. To redeploy without a push, use
+"Run workflow" on the Deploy workflow in the Actions tab. The frontend is rebuilt in place, so it can
+answer with errors for ~15 s during a deploy.
+
 On Oracle Cloud, ports 80/443 must be open in the instance's security list **and** in the host firewall
 (Oracle's Ubuntu images ship iptables rules that reject them by default).
 
