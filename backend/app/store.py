@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS events (
     PRIMARY KEY (session_id, seq)
 );
 CREATE INDEX IF NOT EXISTS events_type ON events (type);
+CREATE TABLE IF NOT EXISTS config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -125,13 +129,46 @@ class Store:
         rows = await asyncio.to_thread(
             self._query,
             "SELECT s.id, s.topic, s.created_at, s.updated_at, "
-            "(SELECT COUNT(*) FROM events e WHERE e.session_id = s.id) "
+            "(SELECT COUNT(*) FROM events e WHERE e.session_id = s.id), "
+            "json_extract(s.payload, '$.snapshot.phase'), "
+            "json_array_length(s.payload, '$.snapshot.messages') "
             "FROM sessions s ORDER BY s.created_at DESC",
         )
         return [
-            {"sessionId": r[0], "topic": r[1], "createdAt": r[2], "updatedAt": r[3], "eventCount": r[4]}
+            {
+                "sessionId": r[0],
+                "topic": r[1],
+                "createdAt": r[2],
+                "updatedAt": r[3],
+                "eventCount": r[4],
+                "phase": r[5],
+                "messageCount": r[6] or 0,
+            }
             for r in rows
         ]
+
+    async def llm_calls(self) -> list[tuple[str, float, dict[str, Any]]]:
+        """Every `llm.call` event as (session_id, ts, data), oldest first."""
+        await self.flush()
+        rows = await asyncio.to_thread(
+            self._query, "SELECT session_id, ts, data FROM events WHERE type = 'llm.call' ORDER BY ts"
+        )
+        return [(r[0], r[1], json.loads(r[2])) for r in rows]
+
+    # ------------------------------------------------------------------ runtime config (admin page)
+
+    async def get_config(self, key: str) -> Optional[str]:
+        rows = await asyncio.to_thread(self._query, "SELECT value FROM config WHERE key = ?", (key,))
+        return rows[0][0] if rows else None
+
+    async def set_config(self, key: str, value: str) -> None:
+        await asyncio.to_thread(self._execute, "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, value))
+
+    def _execute(self, sql: str, args: tuple = ()) -> None:
+        assert self._db is not None
+        with self._lock:
+            self._db.execute(sql, args)
+            self._db.commit()
 
     async def list_events(self, session_id: str) -> list[dict[str, Any]]:
         await self.flush()

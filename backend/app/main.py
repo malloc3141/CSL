@@ -4,8 +4,7 @@
     GET  /api/sessions/{id}            current snapshot
     WS   /ws/sessions/{id}             live events (server -> client) and commands (client -> server)
     GET  /api/health
-    GET  /api/admin/sessions           event-log export, needs ADMIN_TOKEN
-    GET  /api/admin/sessions/{id}/events
+    /api/admin/*                       admin page API, needs ADMIN_TOKEN (see app/admin.py)
 
 Run with exactly one worker: sessions live in this process's memory.
     uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -21,11 +20,13 @@ from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
-from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
+from .admin import admin_router, load_model_override
 from .config import Settings, get_settings
+from .llm import effective_models
 from .orchestrator import Connection, SessionRegistry
 from .pipeline import Pipeline, load_pipeline
 from .protocol import CLIENT_COMMANDS, PROTOCOL_VERSION, CreateSessionRequest, CreateSessionResponse, ErrorEvent
@@ -48,10 +49,15 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[Pipeline]
     async def lifespan(app: FastAPI):
         store = Store(settings.database_path)
         await store.start()
+        await load_model_override(store)
         registry = SessionRegistry(settings, store, pipeline or load_pipeline(settings))
         registry.start()
         app.state.store, app.state.registry = store, registry
-        log.info("pipeline=%s database=%s", registry.pipeline.name, settings.database_path)
+        model, model_fast = effective_models(settings)
+        log.info(
+            "pipeline=%s model=%s model_fast=%s database=%s",
+            registry.pipeline.name, model or "-", model_fast or "-", settings.database_path,
+        )
         yield
         await registry.stop()
         await store.stop()
@@ -60,7 +66,7 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[Pipeline]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"] if allow_all else origins,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT"],
         allow_headers=["*"],
     )
     recent: dict[str, deque[float]] = defaultdict(deque)
@@ -105,22 +111,7 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[Pipeline]
             raise HTTPException(404, "No such session.")
         return runner.session.snapshot().wire()
 
-    def require_admin(authorization: Optional[str]) -> None:
-        token = settings.admin_token
-        if not token:
-            raise HTTPException(404)
-        if not authorization or not secrets.compare_digest(authorization.encode(), f"Bearer {token}".encode()):
-            raise HTTPException(401)
-
-    @app.get("/api/admin/sessions")
-    async def admin_sessions(authorization: Optional[str] = Header(default=None)) -> list[dict[str, Any]]:
-        require_admin(authorization)
-        return await app.state.store.list_sessions()
-
-    @app.get("/api/admin/sessions/{session_id}/events")
-    async def admin_events(session_id: str, authorization: Optional[str] = Header(default=None)) -> list[dict[str, Any]]:
-        require_admin(authorization)
-        return await app.state.store.list_events(session_id)
+    app.include_router(admin_router(settings))
 
     @app.websocket("/ws/sessions/{session_id}")
     async def session_socket(websocket: WebSocket, session_id: str) -> None:

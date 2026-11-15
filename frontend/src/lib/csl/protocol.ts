@@ -117,6 +117,56 @@ export interface CreateSessionResponse {
   snapshot: SessionSnapshot;
 }
 
+export interface AdminSessionRow {
+  sessionId: string;
+  topic: string;
+  createdAt: number;
+  updatedAt: number;
+  phase: Phase | null;
+  messageCount: number;
+  eventCount: number;
+  llmCalls: number;
+  cost: number;
+  live: boolean;
+}
+
+export interface AdminSessionDetail {
+  snapshot: SessionSnapshot;
+  scratch: Record<string, unknown>;
+  live: boolean;
+}
+
+export interface UsageReport {
+  total: UsageBucket;
+  byModel: UsageBucket[];
+  byDay: UsageBucket[];
+  openrouter: OpenRouterKeyInfo | null;
+  openrouterError: string | null;
+}
+
+export interface ModelConfig {
+  pipeline: string;
+  model: string;
+  modelFast: string;
+  defaultModel: string;
+  defaultModelFast: string;
+  overridden: boolean;
+  apiKeySet: boolean;
+}
+
+export interface ModelConfigUpdate {
+  model?: string;
+  modelFast?: string;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  promptPrice: number;
+  completionPrice: number;
+  contextLength: number | null;
+}
+
 export interface Pace {
   auto: boolean;
   speed: number;
@@ -154,6 +204,29 @@ export interface StateVersion {
   state: KnowledgeState;
   changes: StateChange[];
   createdAt: number;
+}
+
+export interface UsageBucket {
+  key: string;
+  calls: number;
+  errors: number;
+  promptTokens: number;
+  completionTokens: number;
+  reasoningTokens: number;
+  cost: number;
+  estimated: boolean;
+  unpricedCalls: number;
+  avgSeconds: number;
+}
+
+export interface OpenRouterKeyInfo {
+  label: string | null;
+  usage: number;
+  usageDaily: number | null;
+  usageWeekly: number | null;
+  usageMonthly: number | null;
+  limit: number | null;
+  limitRemaining: number | null;
 }
 
 export interface KnowledgeState {

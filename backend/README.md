@@ -15,11 +15,13 @@ browser ── REST + WebSocket ──> FastAPI (one process)
 | --- | --- |
 | `app/protocol.py` | Every message on the wire (Pydantic). Source of the frontend's TypeScript types. |
 | `app/orchestrator.py` | Session state machine: turn loop, reading-pace gate, prefetch, learner interruption, pause/resume, error recovery, restore after restart. |
-| `app/main.py` | REST + WebSocket endpoints, access code, rate limit, admin export. |
+| `app/main.py` | REST + WebSocket endpoints, access code, rate limit. |
+| `app/admin.py` | Admin API for the frontend's `/admin` page: usage and cost, runtime model switch, session history, event export. |
+| `app/openrouter.py` | OpenRouter model list (prices) and key spend, for the admin page. |
 | `app/pipeline/base.py` | The interface the agent code implements. |
 | `app/pipeline/mock.py` | Scripted lo-fi scenario, no LLM. For frontend work and tests. |
 | `app/pipeline/baseline.py` | Simple reference pipeline on OpenRouter. A placeholder for the real one. |
-| `app/llm.py` | OpenRouter client: streaming, JSON calls, retries, per-call usage log. |
+| `app/llm.py` | OpenRouter client: streaming, JSON calls, retries, per-call usage and cost log, runtime model override. |
 | `scripts/cli.py` | Run a session in the terminal, without server or frontend. |
 | `scripts/gen_ts.py` | Regenerate `frontend/src/lib/csl/protocol.ts` after changing `protocol.py`. |
 
@@ -45,7 +47,7 @@ The ones that matter in production:
 | --- | --- |
 | `CORS_ORIGINS` | Origins allowed to call the API and open the WebSocket. |
 | `ACCESS_CODE` | If set, creating a session needs this code. Protects the API budget on a public URL. |
-| `ADMIN_TOKEN` | If set, enables the event-log export below. |
+| `ADMIN_TOKEN` | If set, enables the admin API and the `/admin` page (below). Off (404) when empty. |
 | `MAX_TURNS`, `MAX_ACTIVE_SESSIONS`, `SESSIONS_PER_IP_PER_HOUR` | Cost guards. |
 | `PACE_BASE_SECONDS`, `PACE_SECONDS_PER_CHAR`, `PACE_MAX_SECONDS` | Reading gap between two agent messages. |
 
@@ -63,6 +65,24 @@ The ones that matter in production:
   curl -H "Authorization: Bearer $ADMIN_TOKEN" https://<host>/api/admin/sessions
   curl -H "Authorization: Bearer $ADMIN_TOKEN" https://<host>/api/admin/sessions/<id>/events
   ```
+* **Admin page.** `https://<host>/admin`, sign in with `ADMIN_TOKEN`. Tabs:
+  - *사용량*: the OpenRouter key's real spend and limit (`GET /api/v1/key`), plus calls, tokens, latency and
+    cost from the `llm.call` events, by model and by day. `llm.call` carries the cost OpenRouter reports
+    (`usage.cost`); calls without it are estimated from list prices (marked ≈). Streams cancelled by a
+    learner interjection report no usage and are missing from the log figures, so the key spend is the
+    number to trust.
+  - *모델*: switch `OPENROUTER_MODEL` / `OPENROUTER_MODEL_FAST` without a restart. The override is stored in
+    the `config` table of the SQLite database and survives restarts; empty fields fall back to `.env`. It
+    applies from the next LLM call. Ids are checked against the OpenRouter model list. It does nothing while
+    `PIPELINE=mock`.
+  - *대화 이력*: every stored session (cost per session), its setup chat and discussion, every knowledge-state
+    version, the pipeline's `scratch`, and the raw event log (filter, JSON download). Viewing a session does
+    not load it into memory.
+
+  API (all need `Authorization: Bearer $ADMIN_TOKEN`): `GET /api/admin/sessions`, `GET /api/admin/sessions/{id}`,
+  `GET /api/admin/sessions/{id}/events`, `GET /api/admin/usage?tzOffset=<minutes east of UTC>`,
+  `GET|PUT /api/admin/config` (`{model, modelFast}`, `""` = back to `.env`), `GET /api/admin/models[?refresh=true]`.
+  Types: the `Admin*`, `Usage*`, `ModelConfig*`, `ModelInfo` models in `app/protocol.py`.
 
 ## Deploy (uv + pnpm, one server)
 

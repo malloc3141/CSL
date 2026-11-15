@@ -63,6 +63,7 @@ REST (JSON, camelCase):
 | --- | --- |
 | `POST /api/sessions` `{ topic, language?, accessCode? }` | → `{ sessionId, snapshot }` |
 | `GET /api/sessions/{id}` | → snapshot |
+| `/api/admin/*` | admin page only (`src/app/admin`, client `src/lib/csl/admin.ts`); see `backend/README.md` |
 
 WebSocket `ws(s)://<host>/ws/sessions/{id}`. Close code 4404 = no such session, 4403 = origin not allowed.
 

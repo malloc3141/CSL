@@ -20,7 +20,7 @@ from app import protocol as P  # noqa: E402
 OUT = ROOT.parent / "frontend" / "src" / "lib" / "csl" / "protocol.ts"
 NAMED = {get_args(t): name for name, t in P.NAMED_TYPES.items()}
 # Models the client sends: fields with defaults become optional there.
-INPUT_MODELS = set(P.CLIENT_COMMANDS.values()) | {P.CreateSessionRequest}
+INPUT_MODELS = set(P.CLIENT_COMMANDS.values()) | {P.CreateSessionRequest, P.ModelConfigUpdate}
 
 
 def ts_type(tp: Any, seen: list[type]) -> str:

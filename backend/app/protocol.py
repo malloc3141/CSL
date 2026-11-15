@@ -285,4 +285,106 @@ class CreateSessionResponse(Wire):
     snapshot: SessionSnapshot
 
 
-REST_MODELS: list[type[Wire]] = [CreateSessionRequest, CreateSessionResponse]
+# --------------------------------------------------------------------------- admin REST
+# Everything under /api/admin needs "Authorization: Bearer <ADMIN_TOKEN>".
+
+
+class AdminSessionRow(Wire):
+    session_id: str
+    topic: str
+    created_at: float
+    updated_at: float
+    phase: Optional[Phase] = None
+    message_count: int = 0
+    event_count: int = 0
+    llm_calls: int = 0
+    # USD. Reported by OpenRouter where available, otherwise estimated from list prices.
+    cost: float = 0.0
+    # Loaded in this process right now (a client is connected or was recently).
+    live: bool = False
+
+
+class AdminSessionDetail(Wire):
+    snapshot: SessionSnapshot
+    # The pipeline's private state (session.scratch).
+    scratch: dict[str, Any]
+    live: bool
+
+
+class UsageBucket(Wire):
+    """LLM usage summed over a group of `llm.call` events (one model, one day, or all)."""
+
+    key: str
+    calls: int = 0
+    errors: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    reasoning_tokens: int = 0
+    cost: float = 0.0
+    # True if part of `cost` is estimated from list prices (the call reported no cost).
+    estimated: bool = False
+    # Calls with neither a reported cost nor a known price.
+    unpriced_calls: int = 0
+    avg_seconds: float = 0.0
+
+
+class OpenRouterKeyInfo(Wire):
+    """GET https://openrouter.ai/api/v1/key for the configured key. Amounts in USD."""
+
+    label: Optional[str] = None
+    usage: float = 0.0
+    usage_daily: Optional[float] = None
+    usage_weekly: Optional[float] = None
+    usage_monthly: Optional[float] = None
+    limit: Optional[float] = None
+    limit_remaining: Optional[float] = None
+
+
+class UsageReport(Wire):
+    total: UsageBucket
+    by_model: list[UsageBucket]
+    # key = YYYY-MM-DD in the client's time zone (?tzOffset=minutes east of UTC), newest first.
+    by_day: list[UsageBucket]
+    openrouter: Optional[OpenRouterKeyInfo] = None
+    openrouter_error: Optional[str] = None
+
+
+class ModelConfig(Wire):
+    pipeline: str
+    # Effective model ids. model_fast is "" when the fast calls use `model`.
+    model: str
+    model_fast: str
+    # Values from backend/.env.
+    default_model: str
+    default_model_fast: str
+    # A runtime override (set from the admin page, stored in SQLite) is active.
+    overridden: bool
+    api_key_set: bool
+
+
+class ModelConfigUpdate(Wire):
+    # "" means: use the value from backend/.env.
+    model: str = Field(default="", max_length=200)
+    model_fast: str = Field(default="", max_length=200)
+
+
+class ModelInfo(Wire):
+    """One entry of the OpenRouter model list. Prices in USD per million tokens."""
+
+    id: str
+    name: str
+    prompt_price: float
+    completion_price: float
+    context_length: Optional[int] = None
+
+
+REST_MODELS: list[type[Wire]] = [
+    CreateSessionRequest,
+    CreateSessionResponse,
+    AdminSessionRow,
+    AdminSessionDetail,
+    UsageReport,
+    ModelConfig,
+    ModelConfigUpdate,
+    ModelInfo,
+]

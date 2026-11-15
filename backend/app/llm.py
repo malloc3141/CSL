@@ -10,6 +10,10 @@
 Every call is logged to the session's event log as `llm.call` (model, latency,
 token usage when the provider reports it), which is what you need for cost and
 latency numbers later.
+
+The model ids come from backend/.env (OPENROUTER_MODEL, OPENROUTER_MODEL_FAST)
+unless an override was set at runtime from the admin page (set_model_override);
+the override applies from the next call on.
 """
 from __future__ import annotations
 
@@ -25,6 +29,23 @@ from .session import current_session
 
 Messages = list[dict[str, str]]
 
+# Runtime override of the model ids: (model, model_fast). "" = use the .env value.
+_override: tuple[str, str] = ("", "")
+
+
+def set_model_override(model: str, model_fast: str) -> None:
+    global _override
+    _override = (model.strip(), model_fast.strip())
+
+
+def model_override() -> tuple[str, str]:
+    return _override
+
+
+def effective_models(settings: Settings) -> tuple[str, str]:
+    """(model, model_fast) in use now. model_fast is "" when fast calls use `model`."""
+    return _override[0] or settings.openrouter_model, _override[1] or settings.openrouter_model_fast
+
 
 def extract_json(text: str) -> dict[str, Any]:
     """Parse a JSON object out of a model reply (tolerates code fences and chatter)."""
@@ -38,6 +59,10 @@ def extract_json(text: str) -> dict[str, Any]:
     return data
 
 
+# Ask OpenRouter to include token counts and the cost in `usage`.
+USAGE_ACCOUNTING = {"usage": {"include": True}}
+
+
 class LLM:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -48,7 +73,7 @@ class LLM:
     def client(self) -> Any:
         if self._client is None:
             st = self.settings
-            if not st.openrouter_api_key or not st.openrouter_model:
+            if not st.openrouter_api_key or not effective_models(st)[0]:
                 raise PipelineError("OPENROUTER_API_KEY and OPENROUTER_MODEL must be set in backend/.env")
             from openai import AsyncOpenAI
 
@@ -65,8 +90,8 @@ class LLM:
         return self._client
 
     def _model(self, model: Optional[str], fast: bool) -> str:
-        st = self.settings
-        return model or (st.openrouter_model_fast if fast and st.openrouter_model_fast else st.openrouter_model)
+        main, quick = effective_models(self.settings)
+        return model or (quick if fast and quick else main)
 
     def _log(self, kind: str, model: str, started: float, usage: Any, chars: int, error: Optional[str] = None) -> None:
         session = current_session.get()
@@ -81,6 +106,14 @@ class LLM:
         if usage is not None:
             data["promptTokens"] = getattr(usage, "prompt_tokens", None)
             data["completionTokens"] = getattr(usage, "completion_tokens", None)
+            details = getattr(usage, "completion_tokens_details", None)
+            reasoning = getattr(details, "reasoning_tokens", None) if details is not None else None
+            if reasoning:
+                data["reasoningTokens"] = reasoning
+            # OpenRouter reports the charged amount (USD) in usage.cost.
+            cost = getattr(usage, "cost", None)
+            if isinstance(cost, (int, float)):
+                data["cost"] = cost
         if error:
             data["error"] = error
         session.log("llm.call", data)
@@ -97,7 +130,14 @@ class LLM:
         """Yield text chunks as the model produces them."""
         name = self._model(model, fast)
         started, usage, chars = time.monotonic(), None, 0
-        kwargs: dict[str, Any] = {"model": name, "messages": messages, "temperature": temperature, "stream": True}
+        kwargs: dict[str, Any] = {
+            "model": name,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+            "extra_body": USAGE_ACCOUNTING,
+        }
         if max_tokens:
             kwargs["max_tokens"] = max_tokens
         async with self._sem:
@@ -130,7 +170,12 @@ class LLM:
     ) -> str:
         name = self._model(model, fast)
         started = time.monotonic()
-        kwargs: dict[str, Any] = {"model": name, "messages": messages, "temperature": temperature}
+        kwargs: dict[str, Any] = {
+            "model": name,
+            "messages": messages,
+            "temperature": temperature,
+            "extra_body": USAGE_ACCOUNTING,
+        }
         if max_tokens:
             kwargs["max_tokens"] = max_tokens
         if json_mode:

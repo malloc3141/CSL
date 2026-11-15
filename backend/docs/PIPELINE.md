@@ -81,8 +81,11 @@ text = await llm.complete(messages)
 data = await llm.complete_json(messages, fast=True)       # dict; fast=True uses OPENROUTER_MODEL_FAST
 ```
 
-Every call is logged with model, latency and token usage. You may use another client or framework
-inside the methods; the interface is all the server needs.
+Every call is logged (`llm.call`) with model, latency, token usage and the cost OpenRouter reports; the
+admin page (`/admin`) sums these. The model ids can be switched at runtime from the admin page, so do not
+cache `settings.openrouter_model` yourself: pass `fast=True` / `fast=False` and let `get_llm()` pick. You may
+use another client or framework inside the methods; the interface is all the server needs (but then your
+calls are missing from the usage figures and ignore the model switch).
 
 ## Try it without the frontend
 
