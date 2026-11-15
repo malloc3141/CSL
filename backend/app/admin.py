@@ -128,6 +128,7 @@ def admin_router(settings: Settings) -> APIRouter:
             if runner is not None:
                 item.live = True
                 item.phase = runner.session.phase
+                item.pipeline = runner.session.pipeline or None
                 item.message_count = len(runner.session.messages)
             out.append(item.wire())
         return out

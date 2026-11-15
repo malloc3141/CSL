@@ -39,6 +39,9 @@ uv run python scripts/cli.py "Why is summer hotter than winter?"
 
 To use real models set `PIPELINE=baseline`, `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env`.
 To use your own pipeline set `PIPELINE=your.module:YourPipeline` (see [docs/PIPELINE.md](docs/PIPELINE.md)).
+Whatever `PIPELINE` is, a single session can still ask for the scripted mock (`POST /api/sessions` with
+`"pipeline": "mock"`, or "Mock" on `/dev`), so frontend work never needs the real agents. The choice is
+stored with the session and kept when it is restored after a restart.
 
 All settings are in `app/config.py`; each can be set as an environment variable or in `.env`.
 The ones that matter in production:
@@ -46,7 +49,7 @@ The ones that matter in production:
 | Variable | Meaning |
 | --- | --- |
 | `CORS_ORIGINS` | Origins allowed to call the API and open the WebSocket. |
-| `ACCESS_CODE` | If set, creating a session needs this code. Protects the API budget on a public URL. |
+| `ACCESS_CODE` | If set, creating a session needs this code. Protects the API budget on a public URL. Sessions created with `pipeline: "mock"` are exempt (they cost nothing). |
 | `ADMIN_TOKEN` | If set, enables the admin API and the `/admin` page (below). Off (404) when empty. |
 | `LLM_REASONING` | `off` (default), `low`, `medium`, `high` or `default`. Models such as claude-haiku-5.5 "think" on their own and the thinking tokens count against `max_tokens`, so short replies can come back empty (`init_turn wrote no text`). `off` turns thinking off; a model that rejects that gets the call again without the field. |
 | `MAX_TURNS`, `MAX_ACTIVE_SESSIONS`, `SESSIONS_PER_IP_PER_HOUR` | Cost guards. |

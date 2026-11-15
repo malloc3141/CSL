@@ -14,6 +14,7 @@ export interface SessionSnapshot {
   sessionId: string;
   topic: string;
   language: Language;
+  pipeline: string;
   phase: Phase;
   status: Status;
   pace: Pace;
@@ -110,6 +111,7 @@ export interface CreateSessionRequest {
   topic: string;
   language?: Language;
   accessCode?: string | null;
+  pipeline?: "mock" | null;
 }
 
 export interface CreateSessionResponse {
@@ -122,6 +124,7 @@ export interface AdminSessionRow {
   topic: string;
   createdAt: number;
   updatedAt: number;
+  pipeline: string | null;
   phase: Phase | null;
   messageCount: number;
   eventCount: number;

@@ -226,7 +226,7 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
           </Button>
         </Row>
         <Meta>
-          {s.sessionId} · {s.phase} / {s.status} · {s.language} · started {dateTime(s.createdAt)} ·{" "}
+          {s.sessionId} · {s.pipeline || "?"} · {s.phase} / {s.status} · {s.language} · started {dateTime(s.createdAt)} ·{" "}
           {detail.live ? "in memory" : "stored copy"}
         </Meta>
         {s.focus ? <Meta>focus: {s.focus}</Meta> : null}
@@ -313,6 +313,7 @@ export function SessionsTab({ token }: { token: string }) {
                   <th>Started</th>
                   <th>Topic</th>
                   <th>Phase</th>
+                  <th>Pipeline</th>
                   <th className="num">Messages</th>
                   <th className="num">LLM</th>
                   <th className="num">Cost</th>
@@ -331,6 +332,7 @@ export function SessionsTab({ token }: { token: string }) {
                       {r.live ? " ●" : ""}
                     </td>
                     <td>{r.phase ?? "?"}</td>
+                    <td>{r.pipeline ?? "–"}</td>
                     <td className="num">{r.messageCount}</td>
                     <td className="num">{r.llmCalls || "–"}</td>
                     <td className="num">{r.llmCalls ? usd(r.cost) : "–"}</td>

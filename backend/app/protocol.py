@@ -141,6 +141,9 @@ class SessionSnapshot(Wire):
     session_id: str
     topic: str
     language: Language
+    # Name of the pipeline that runs this session: the server's PIPELINE, or "mock" if the
+    # session asked for it. "" for sessions stored before this field existed.
+    pipeline: str = ""
     phase: Phase
     status: Status
     pace: Pace
@@ -278,6 +281,9 @@ class CreateSessionRequest(Wire):
     topic: str = Field(min_length=1, max_length=300)
     language: Language = "en"
     access_code: Optional[str] = None
+    # "mock": run this one session on the scripted mock (no LLM, no cost, no access code needed),
+    # whatever PIPELINE the server uses. For frontend development. None: the server's PIPELINE.
+    pipeline: Optional[Literal["mock"]] = None
 
 
 class CreateSessionResponse(Wire):
@@ -294,6 +300,7 @@ class AdminSessionRow(Wire):
     topic: str
     created_at: float
     updated_at: float
+    pipeline: Optional[str] = None
     phase: Optional[Phase] = None
     message_count: int = 0
     event_count: int = 0

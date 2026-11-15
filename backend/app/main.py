@@ -79,13 +79,16 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[Pipeline]
         return {
             "ok": True,
             "pipeline": registry().pipeline.name,
+            # Pipelines a session can ask for with CreateSessionRequest.pipeline.
+            "sessionPipelines": ["mock"],
             "activeSessions": len(registry().runners),
             "protocolVersion": PROTOCOL_VERSION,
         }
 
     @app.post("/api/sessions")
     async def create_session(body: CreateSessionRequest, request: Request) -> dict[str, Any]:
-        if settings.access_code and not secrets.compare_digest(
+        # Mock sessions cost nothing, so they do not need the access code (rate limit still applies).
+        if body.pipeline != "mock" and settings.access_code and not secrets.compare_digest(
             (body.access_code or "").encode(), settings.access_code.encode()
         ):
             raise HTTPException(403, "Wrong access code.")
@@ -101,7 +104,7 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[Pipeline]
         if not body.topic.strip():
             raise HTTPException(422, "Topic must not be empty.")
         window.append(now)
-        runner = registry().create(body.topic, body.language)
+        runner = registry().create(body.topic, body.language, body.pipeline)
         return CreateSessionResponse(session_id=runner.session.id, snapshot=runner.session.snapshot()).wire()
 
     @app.get("/api/sessions/{session_id}")

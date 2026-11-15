@@ -713,6 +713,7 @@ class SessionRegistry:
         self.settings = settings
         self.store = store
         self.pipeline = pipeline
+        self._mock: Optional[Pipeline] = None
         self.runners: dict[str, SessionRunner] = {}
         self._restore_lock = asyncio.Lock()
         self._janitor: Optional[asyncio.Task] = None
@@ -732,11 +733,29 @@ class SessionRegistry:
     def has_capacity(self) -> bool:
         return len(self.runners) < self.settings.max_active_sessions
 
-    def create(self, topic: str, language: Language) -> SessionRunner:
+    def pipeline_for(self, name: Optional[str]) -> Pipeline:
+        """The server's PIPELINE, or the scripted mock for a session that asked for "mock".
+
+        Any other name (also "" from sessions stored before per-session pipelines, or a pipeline the
+        server no longer runs) gets the server's PIPELINE.
+        """
+        if name != "mock" or self.pipeline.name == "mock":
+            return self.pipeline
+        if self._mock is None:
+            from .pipeline.mock import MockPipeline
+
+            mock = MockPipeline()
+            mock.delay = self.settings.mock_chunk_delay
+            self._mock = mock
+        return self._mock
+
+    def create(self, topic: str, language: Language, pipeline: Optional[str] = None) -> SessionRunner:
+        chosen = self.pipeline_for(pipeline)
         session = Session(new_id(), topic.strip(), language, self.settings.max_turns)
-        runner = SessionRunner(session, self.pipeline, self.store, self.settings)
+        session.pipeline = chosen.name
+        runner = SessionRunner(session, chosen, self.store, self.settings)
         self.runners[session.id] = runner
-        runner.emit("session.created", {"topic": session.topic, "language": language, "pipeline": self.pipeline.name},
+        runner.emit("session.created", {"topic": session.topic, "language": language, "pipeline": chosen.name},
                     broadcast=False)
         runner._save()
         runner.start()
@@ -754,7 +773,9 @@ class SessionRegistry:
             if raw is None:
                 return None
             session = Session.restore(raw)
-            runner = SessionRunner(session, self.pipeline, self.store, self.settings)
+            chosen = self.pipeline_for(session.pipeline)
+            session.pipeline = chosen.name
+            runner = SessionRunner(session, chosen, self.store, self.settings)
             self.runners[session_id] = runner
             runner.emit("session.restored", {}, broadcast=False)
             runner.start()

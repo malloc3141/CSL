@@ -129,6 +129,7 @@ function StatePanel({ name, versions }: { name: string; versions: StateVersion[]
 export default function DevPage() {
   const [topic, setTopic] = useState("Why is summer hotter than winter?");
   const [language, setLanguage] = useState<Language>("en");
+  const [useMock, setUseMock] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -138,7 +139,7 @@ export default function DevPage() {
   const start = async () => {
     setCreateError(null);
     try {
-      const created = await createSession({ topic, language, accessCode: accessCode || null });
+      const created = await createSession({ topic, language, accessCode: accessCode || null, pipeline: useMock ? "mock" : null });
       setSessionId(created.sessionId);
     } catch (cause) {
       setCreateError(cause instanceof Error ? cause.message : String(cause));
@@ -162,7 +163,30 @@ export default function DevPage() {
               <option value="ko">Korean</option>
             </select>
           </Row>
-          <TextField id="code" label="Access code (if the server requires one)" value={accessCode} onChange={setAccessCode} />
+          <Row>
+            <Meta>Agents</Meta>
+            <select
+              value={useMock ? "mock" : "server"}
+              onChange={(event) => setUseMock(event.target.value === "mock")}
+              aria-label="Agents"
+            >
+              <option value="server">Server pipeline (real LLM)</option>
+              <option value="mock">Mock (scripted, free)</option>
+            </select>
+          </Row>
+          {useMock ? (
+            <Meta>
+              The mock replays a fixed scenario (&quot;Why is summer hotter than winter?&quot;) and ignores the topic. It
+              makes no LLM calls and needs no access code.
+            </Meta>
+          ) : (
+            <TextField
+              id="code"
+              label="Access code (if the server requires one)"
+              value={accessCode}
+              onChange={setAccessCode}
+            />
+          )}
           <Row>
             <Button onClick={start} disabled={!topic.trim() || Boolean(sessionId)}>
               Start session
@@ -191,7 +215,7 @@ export default function DevPage() {
     <Page>
       <Card>
         <Meta>
-          phase: {phase} · status: {status} · socket: {connection} · {snapshot.messages.length} messages
+          pipeline: {snapshot.pipeline || "?"} · phase: {phase} · status: {status} · socket: {connection} · {snapshot.messages.length} messages
         </Meta>
         {snapshot.focus ? <Meta>focus: {snapshot.focus}</Meta> : null}
         {error ? (

@@ -131,6 +131,7 @@ class Store:
             "SELECT s.id, s.topic, s.created_at, s.updated_at, "
             "(SELECT COUNT(*) FROM events e WHERE e.session_id = s.id), "
             "json_extract(s.payload, '$.snapshot.phase'), "
+            "json_extract(s.payload, '$.snapshot.pipeline'), "
             "json_array_length(s.payload, '$.snapshot.messages') "
             "FROM sessions s ORDER BY s.created_at DESC",
         )
@@ -142,7 +143,8 @@ class Store:
                 "updatedAt": r[3],
                 "eventCount": r[4],
                 "phase": r[5],
-                "messageCount": r[6] or 0,
+                "pipeline": r[6] or None,
+                "messageCount": r[7] or 0,
             }
             for r in rows
         ]

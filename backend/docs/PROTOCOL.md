@@ -15,6 +15,11 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 `snapshot` is always the complete, current state of the session; render from it.
 `src/app/dev/page.tsx` is a working example of everything below.
 
+**Free sessions for UI work.** `createSession({ topic, pipeline: "mock" })` runs that one session on the
+scripted mock, whatever pipeline the server uses: no LLM calls, no cost, no access code. It replays the
+"Why is summer hotter than winter?" scenario (en or ko) and ignores `topic`. Use it for frontend
+development against the deployed server; leave `pipeline` out for the real agents.
+
 | `snapshot` field | Use |
 | --- | --- |
 | `phase` | `init` (setup chat) → `building` (classroom being created) → `ready` (show the classroom, wait for start) → `discussion` → `ended` |
@@ -26,6 +31,7 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 | `invitedTurnId` | Set while the tutor waits for the learner's explanation |
 | `pace` | `{ auto, speed }` |
 | `focus` | One line: what the session is built around |
+| `pipeline` | Which agents run the session: the server's pipeline (e.g. `baseline`) or `mock` |
 
 | `actions` | Effect |
 | --- | --- |
@@ -61,7 +67,7 @@ REST (JSON, camelCase):
 
 | | |
 | --- | --- |
-| `POST /api/sessions` `{ topic, language?, accessCode? }` | → `{ sessionId, snapshot }` |
+| `POST /api/sessions` `{ topic, language?, accessCode?, pipeline? }` | → `{ sessionId, snapshot }`. `pipeline: "mock"` needs no access code |
 | `GET /api/sessions/{id}` | → snapshot |
 | `/api/admin/*` | admin page only (`src/app/admin`, client `src/lib/csl/admin.ts`); see `backend/README.md` |
 
