@@ -63,6 +63,35 @@ def extract_json(text: str) -> dict[str, Any]:
 USAGE_ACCOUNTING = {"usage": {"include": True}}
 
 
+def reasoning_param(setting: str) -> Optional[dict[str, Any]]:
+    """OpenRouter's `reasoning` request field for LLM_REASONING.
+
+    Models such as claude-haiku-5.5 decide on their own to think before answering, and the thinking
+    tokens count against max_tokens: a 300-token reply budget can be used up before any text comes
+    out. "off" (the default) turns thinking off; "low" / "medium" / "high" set an effort; "default"
+    sends nothing and leaves it to the model.
+    """
+    setting = setting.strip().lower()
+    if setting == "off":
+        return {"enabled": False}
+    if setting in ("low", "medium", "high"):
+        return {"effort": setting}
+    return None
+
+
+def _reasoning_only(usage: Any) -> bool:
+    """True if the reply has no text because every completion token went into reasoning."""
+    details = getattr(usage, "completion_tokens_details", None)
+    reasoning = getattr(details, "reasoning_tokens", None) or 0
+    return bool(reasoning) and reasoning >= (getattr(usage, "completion_tokens", None) or 0)
+
+
+REASONING_ONLY = (
+    "the model used its whole max_tokens budget for reasoning and wrote no text "
+    "(set LLM_REASONING=off, or pick a model that can answer without reasoning)"
+)
+
+
 class LLM:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -88,6 +117,37 @@ class LLM:
                 max_retries=2,
             )
         return self._client
+
+    def _base_kwargs(
+        self, name: str, messages: Messages, temperature: float, max_tokens: Optional[int]
+    ) -> dict[str, Any]:
+        extra: dict[str, Any] = dict(USAGE_ACCOUNTING)
+        reasoning = reasoning_param(self.settings.llm_reasoning)
+        if reasoning is not None:
+            extra["reasoning"] = reasoning
+        kwargs: dict[str, Any] = {"model": name, "messages": messages, "temperature": temperature, "extra_body": extra}
+        if max_tokens:
+            kwargs["max_tokens"] = max_tokens
+        return kwargs
+
+    async def _create(self, kwargs: dict[str, Any]) -> Any:
+        """chat.completions.create, dropping optional fields the model rejects (400/404/422).
+
+        Not every model on OpenRouter supports response_format, and models that always reason
+        may reject a request to turn reasoning off.
+        """
+        while True:
+            try:
+                return await self.client.chat.completions.create(**kwargs)
+            except Exception as exc:
+                if getattr(exc, "status_code", None) not in (400, 404, 422):
+                    raise
+                if "response_format" in kwargs:
+                    kwargs.pop("response_format")
+                elif "reasoning" in kwargs.get("extra_body", {}):
+                    kwargs["extra_body"] = {k: v for k, v in kwargs["extra_body"].items() if k != "reasoning"}
+                else:
+                    raise
 
     def _model(self, model: Optional[str], fast: bool) -> str:
         main, quick = effective_models(self.settings)
@@ -130,19 +190,11 @@ class LLM:
         """Yield text chunks as the model produces them."""
         name = self._model(model, fast)
         started, usage, chars = time.monotonic(), None, 0
-        kwargs: dict[str, Any] = {
-            "model": name,
-            "messages": messages,
-            "temperature": temperature,
-            "stream": True,
-            "stream_options": {"include_usage": True},
-            "extra_body": USAGE_ACCOUNTING,
-        }
-        if max_tokens:
-            kwargs["max_tokens"] = max_tokens
+        kwargs = self._base_kwargs(name, messages, temperature, max_tokens)
+        kwargs.update(stream=True, stream_options={"include_usage": True})
         async with self._sem:
             try:
-                stream = await self.client.chat.completions.create(**kwargs)
+                stream = await self._create(kwargs)
             except Exception as exc:
                 self._log("stream", name, started, None, 0, repr(exc))
                 raise
@@ -157,6 +209,8 @@ class LLM:
             finally:
                 await stream.close()
                 self._log("stream", name, started, usage, chars)
+        if not chars and usage is not None and _reasoning_only(usage):
+            raise PipelineError(REASONING_ONLY)
 
     async def complete(
         self,
@@ -170,31 +224,20 @@ class LLM:
     ) -> str:
         name = self._model(model, fast)
         started = time.monotonic()
-        kwargs: dict[str, Any] = {
-            "model": name,
-            "messages": messages,
-            "temperature": temperature,
-            "extra_body": USAGE_ACCOUNTING,
-        }
-        if max_tokens:
-            kwargs["max_tokens"] = max_tokens
+        kwargs = self._base_kwargs(name, messages, temperature, max_tokens)
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         async with self._sem:
             try:
-                try:
-                    resp = await self.client.chat.completions.create(**kwargs)
-                except Exception as exc:
-                    # Not every model on OpenRouter supports response_format.
-                    if not json_mode or getattr(exc, "status_code", None) not in (400, 404, 422):
-                        raise
-                    kwargs.pop("response_format")
-                    resp = await self.client.chat.completions.create(**kwargs)
+                resp = await self._create(kwargs)
             except Exception as exc:
                 self._log("complete", name, started, None, 0, repr(exc))
                 raise
         text = (resp.choices[0].message.content or "") if resp.choices else ""
-        self._log("complete", name, started, getattr(resp, "usage", None), len(text))
+        usage = getattr(resp, "usage", None)
+        self._log("complete", name, started, usage, len(text))
+        if not text and usage is not None and _reasoning_only(usage):
+            raise PipelineError(REASONING_ONLY)
         return text
 
     async def complete_json(

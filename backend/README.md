@@ -48,6 +48,7 @@ The ones that matter in production:
 | `CORS_ORIGINS` | Origins allowed to call the API and open the WebSocket. |
 | `ACCESS_CODE` | If set, creating a session needs this code. Protects the API budget on a public URL. |
 | `ADMIN_TOKEN` | If set, enables the admin API and the `/admin` page (below). Off (404) when empty. |
+| `LLM_REASONING` | `off` (default), `low`, `medium`, `high` or `default`. Models such as claude-haiku-5.5 "think" on their own and the thinking tokens count against `max_tokens`, so short replies can come back empty (`init_turn wrote no text`). `off` turns thinking off; a model that rejects that gets the call again without the field. |
 | `MAX_TURNS`, `MAX_ACTIVE_SESSIONS`, `SESSIONS_PER_IP_PER_HOUR` | Cost guards. |
 | `PACE_BASE_SECONDS`, `PACE_SECONDS_PER_CHAR`, `PACE_MAX_SECONDS` | Reading gap between two agent messages. |
 

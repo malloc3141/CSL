@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     openrouter_app_title: str = "CSL"
     llm_concurrency: int = 8
     llm_timeout_seconds: float = 60.0
+    # Model "thinking" before answering: off | low | medium | high | default (see llm.reasoning_param).
+    # Thinking tokens count against each call's max_tokens, so "off" is the safe choice here.
+    llm_reasoning: str = "off"
 
     database_path: str = "data/csl.db"
     cors_origins: str = "http://localhost:3000"
