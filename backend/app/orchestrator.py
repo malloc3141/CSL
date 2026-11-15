@@ -23,6 +23,7 @@ import time
 from typing import Any, Optional
 
 from .config import Settings
+from .pipeline import SESSION_PIPELINES, make_pipeline
 from .pipeline.base import Classroom, Pipeline, PipelineError, SpeakerDecision
 from .protocol import (
     ActiveTurn,
@@ -713,7 +714,8 @@ class SessionRegistry:
         self.settings = settings
         self.store = store
         self.pipeline = pipeline
-        self._mock: Optional[Pipeline] = None
+        # Pipelines sessions asked for by name (SESSION_PIPELINES), created on first use.
+        self._named: dict[str, Pipeline] = {}
         self.runners: dict[str, SessionRunner] = {}
         self._restore_lock = asyncio.Lock()
         self._janitor: Optional[asyncio.Task] = None
@@ -733,29 +735,37 @@ class SessionRegistry:
     def has_capacity(self) -> bool:
         return len(self.runners) < self.settings.max_active_sessions
 
+    def knows_pipeline(self, name: str) -> bool:
+        return name == self.pipeline.name or name in SESSION_PIPELINES
+
     def pipeline_for(self, name: Optional[str]) -> Pipeline:
-        """The server's PIPELINE, or the scripted mock for a session that asked for "mock".
+        """The pipeline that runs a session: the server's PIPELINE (no name, or its own name), or the
+        entry of SESSION_PIPELINES the session asked for.
 
-        Any other name (also "" from sessions stored before per-session pipelines, or a pipeline the
-        server no longer runs) gets the server's PIPELINE.
+        Raises KeyError for a name that is not registered and whatever the import raises for an entry
+        that cannot be loaded. One instance per name serves all its sessions.
         """
-        if name != "mock" or self.pipeline.name == "mock":
+        if not name or name == self.pipeline.name:
             return self.pipeline
-        if self._mock is None:
-            from .pipeline.mock import MockPipeline
-
-            mock = MockPipeline()
-            mock.delay = self.settings.mock_chunk_delay
-            self._mock = mock
-        return self._mock
+        pipeline = self._named.get(name)
+        if pipeline is None:
+            if name not in SESSION_PIPELINES:
+                raise KeyError(name)
+            pipeline = make_pipeline(name)
+            if type(pipeline) is type(self.pipeline):
+                pipeline = self.pipeline  # the server already runs this class
+            elif name == "mock":
+                pipeline.delay = self.settings.mock_chunk_delay  # type: ignore[attr-defined]
+            self._named[name] = pipeline
+        return pipeline
 
     def create(self, topic: str, language: Language, pipeline: Optional[str] = None) -> SessionRunner:
         chosen = self.pipeline_for(pipeline)
         session = Session(new_id(), topic.strip(), language, self.settings.max_turns)
-        session.pipeline = chosen.name
+        session.pipeline = pipeline or self.pipeline.name
         runner = SessionRunner(session, chosen, self.store, self.settings)
         self.runners[session.id] = runner
-        runner.emit("session.created", {"topic": session.topic, "language": language, "pipeline": chosen.name},
+        runner.emit("session.created", {"topic": session.topic, "language": language, "pipeline": session.pipeline},
                     broadcast=False)
         runner._save()
         runner.start()
@@ -773,8 +783,16 @@ class SessionRegistry:
             if raw is None:
                 return None
             session = Session.restore(raw)
-            chosen = self.pipeline_for(session.pipeline)
-            session.pipeline = chosen.name
+            # A session keeps the pipeline it was created with. If that one is gone (not registered
+            # any more, fails to load, or stored before per-session pipelines), the server's PIPELINE
+            # takes over.
+            try:
+                chosen = self.pipeline_for(session.pipeline)
+            except Exception as exc:
+                log.warning("session %s: pipeline %r unavailable (%r), using %s",
+                            session_id, session.pipeline, exc, self.pipeline.name)
+                chosen, session.pipeline = self.pipeline, ""
+            session.pipeline = session.pipeline or self.pipeline.name
             runner = SessionRunner(session, chosen, self.store, self.settings)
             self.runners[session_id] = runner
             runner.emit("session.restored", {}, broadcast=False)

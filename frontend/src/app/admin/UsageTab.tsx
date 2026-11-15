@@ -17,6 +17,7 @@ import {
   Table,
   TableWrap,
   int,
+  percent,
   usd,
   useAdminLoad,
 } from "./ui";
@@ -51,6 +52,8 @@ function BucketTable({ title, keyLabel, buckets }: { title: string; keyLabel: st
                 <th className="num">Calls</th>
                 <th className="num">Errors</th>
                 <th className="num">Input tokens</th>
+                <th className="num">Cached input</th>
+                <th className="num">Cache hit rate</th>
                 <th className="num">Output tokens</th>
                 <th className="num">Reasoning tokens</th>
                 <th className="num">Avg latency</th>
@@ -64,6 +67,8 @@ function BucketTable({ title, keyLabel, buckets }: { title: string; keyLabel: st
                   <td className="num">{int(b.calls)}</td>
                   <td className="num">{b.errors ? int(b.errors) : "–"}</td>
                   <td className="num">{int(b.promptTokens)}</td>
+                  <td className="num">{b.cacheMeasuredTokens ? int(b.cachedTokens) : "–"}</td>
+                  <td className="num">{percent(b.cacheHitRate)}</td>
                   <td className="num">{int(b.completionTokens)}</td>
                   <td className="num">{b.reasoningTokens ? int(b.reasoningTokens) : "–"}</td>
                   <td className="num">{b.avgSeconds.toFixed(1)}s</td>
@@ -135,6 +140,16 @@ export function UsageTab({ token, apiKeySet }: { token: string; apiKeySet: boole
             <Stat label="Calls" value={int(total.calls)} hint={total.errors ? `${int(total.errors)} errors` : undefined} />
             <Stat label="Input tokens" value={int(total.promptTokens)} />
             <Stat
+              label="Cache hit rate"
+              value={percent(total.cacheHitRate)}
+              hint={
+                total.cacheMeasuredTokens
+                  ? `${int(total.cachedTokens)} of ${int(total.cacheMeasuredTokens)} input tokens read from cache` +
+                    (total.cacheWriteTokens ? `, ${int(total.cacheWriteTokens)} written` : "")
+                  : "No call has reported cache figures yet"
+              }
+            />
+            <Stat
               label="Output tokens"
               value={int(total.completionTokens)}
               hint={total.reasoningTokens ? `incl. ${int(total.reasoningTokens)} reasoning` : undefined}
@@ -153,6 +168,11 @@ export function UsageTab({ token, apiKeySet }: { token: string; apiKeySet: boole
               {total.unpricedCalls ? ` ${total.unpricedCalls} calls with an unknown price are left out.` : ""}
             </Notice>
           ) : null}
+          <Meta>
+            Cache hit rate: input tokens read from the provider&apos;s prompt cache, divided by the input tokens of
+            the calls that reported a cache figure (older calls, logged before this was recorded, are left out). Some providers, Anthropic among them, cache only when the request asks for it (cache_control);
+            this server does not send that yet, so 0% is expected for those models.
+          </Meta>
           <Meta>
             Turns cancelled midway (prefetched turns dropped when the learner interjects) report no tokens
             and are missing here. For the exact amount, use the OpenRouter key spend above.

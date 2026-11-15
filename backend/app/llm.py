@@ -8,8 +8,9 @@
     ... = await llm.complete(messages, fast=True)     # OPENROUTER_MODEL_FAST
 
 Every call is logged to the session's event log as `llm.call` (model, latency,
-token usage when the provider reports it), which is what you need for cost and
-latency numbers later.
+and when the provider reports them: token usage, cost, reasoning tokens, prompt
+tokens read from / written to the prompt cache), which is what you need for
+cost and latency numbers later.
 
 The model ids come from backend/.env (OPENROUTER_MODEL, OPENROUTER_MODEL_FAST)
 unless an override was set at runtime from the admin page (set_model_override);
@@ -170,6 +171,16 @@ class LLM:
             reasoning = getattr(details, "reasoning_tokens", None) if details is not None else None
             if reasoning:
                 data["reasoningTokens"] = reasoning
+            # Prompt cache: tokens of the prompt read from the provider's cache, and tokens written to
+            # it. cachedTokens is logged (also as 0) whenever the provider reports the figure, so the
+            # admin page can tell "no cache hit" from "not reported".
+            prompt_details = getattr(usage, "prompt_tokens_details", None)
+            cached = getattr(prompt_details, "cached_tokens", None)
+            if isinstance(cached, int):
+                data["cachedTokens"] = cached
+            written = getattr(prompt_details, "cache_write_tokens", None)
+            if isinstance(written, int) and written:
+                data["cacheWriteTokens"] = written
             # OpenRouter reports the charged amount (USD) in usage.cost.
             cost = getattr(usage, "cost", None)
             if isinstance(cost, (int, float)):

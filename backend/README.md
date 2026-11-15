@@ -27,7 +27,7 @@ browser ── REST + WebSocket ──> FastAPI (one process)
 | `app/llm.py` | OpenRouter client: streaming, JSON calls, retries, per-call usage and cost log, runtime model override. |
 | `scripts/cli.py` | Run a session in the terminal, without server or frontend. |
 | `scripts/gen_ts.py` | Regenerate `frontend/src/lib/csl/protocol.ts` after changing `protocol.py`. |
-| `tests/` | 26 tests, no network: orchestrator, REST/WebSocket, baseline and LLM client with fakes, admin API, per-session pipeline. |
+| `tests/` | 27 tests, no network: orchestrator, REST/WebSocket, baseline and LLM client with fakes, admin API, per-session pipelines. |
 
 ## Run
 
@@ -45,9 +45,19 @@ To use real models set `PIPELINE=baseline`, `OPENROUTER_API_KEY` and `OPENROUTER
 To use your own pipeline set `PIPELINE=your.module:YourPipeline` (see [docs/PIPELINE.md](docs/PIPELINE.md)).
 The module is imported with `backend/` as the working directory, so `backend/app/pipeline/mine.py` is
 `PIPELINE=app.pipeline.mine:MyPipeline`. The pipeline is loaded once at startup; changing it needs a restart.
-Whatever `PIPELINE` is, a single session can still ask for the scripted mock (`POST /api/sessions` with
-`"pipeline": "mock"`, or "Mock" on `/dev`), so frontend work never needs the real agents. The choice is
-stored with the session and kept when it is restored after a restart.
+**Per-session pipelines.** `PIPELINE` is only the server's default. A single session can run on any pipeline
+registered in `SESSION_PIPELINES` (`app/pipeline/__init__.py`): `POST /api/sessions` with
+`"pipeline": "<name>"`, or the "Agents" selector on `/dev`. `GET /api/health` lists the names
+(`sessionPipelines`) and which of them are free (`freePipelines`).
+
+- `mock` is free: no LLM calls, no access code. Frontend work never needs the real agents.
+- To try a new pipeline on the deployed server, add one line to `SESSION_PIPELINES` and push. No `.env`
+  change, and the server's default stays what it was. A registered name also works as `PIPELINE=<name>`.
+- The module is imported the first time a session asks for it. If that fails, only that request fails
+  (500; the reason is in the server log, and in the response when `DEBUG=true`). A test checks that every
+  registered entry loads, so a broken registration does not get deployed.
+- The name is stored with the session and kept when it is restored after a restart. If the name is no
+  longer registered, the server's default takes the session over.
 
 All settings are in `app/config.py`; each can be set as an environment variable or in `.env`.
 The ones that matter in production:
@@ -58,7 +68,7 @@ The ones that matter in production:
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_MODEL_FAST` | Needed unless `PIPELINE=mock`. The fast model is used for calls made with `fast=True` and falls back to the main one. Both ids can be switched from the admin page without a restart. |
 | `PEER_COUNT` | Number of peers the baseline pipeline creates (default 2). |
 | `CORS_ORIGINS` | Origins allowed to call the API and open the WebSocket. |
-| `ACCESS_CODE` | If set, creating a session needs this code. Protects the API budget on a public URL. Sessions created with `pipeline: "mock"` are exempt (they cost nothing). |
+| `ACCESS_CODE` | If set, creating a session needs this code. Protects the API budget on a public URL. Sessions that ask for a free pipeline (`pipeline: "mock"`) are exempt (they cost nothing). |
 | `ADMIN_TOKEN` | If set, enables the admin API and the `/admin` page (below). Off (404) when empty. |
 | `LLM_REASONING` | `off` (default), `low`, `medium`, `high` or `default`. Models such as claude-haiku-5.5 "think" on their own and the thinking tokens count against `max_tokens`, so short replies can come back empty (`init_turn wrote no text`). `off` turns thinking off; a model that rejects that gets the call again without the field. |
 | `MAX_TURNS`, `MAX_ACTIVE_SESSIONS`, `SESSIONS_PER_IP_PER_HOUR` | Cost guards. |
@@ -86,6 +96,11 @@ The ones that matter in production:
     (`usage.cost`); calls without it are estimated from list prices (marked ≈). Streams cancelled by a
     learner interjection report no usage and are missing from the log figures, so the key spend is the
     number to trust.
+    *Cache hit rate* (total, by model, by day): input tokens read from the provider's prompt cache
+    (`usage.prompt_tokens_details.cached_tokens`, logged as `cachedTokens`) divided by the input tokens of
+    the calls that reported that figure. Older calls, logged before this was recorded, are left out.
+    Some providers, Anthropic among them, only cache when the request asks for it (`cache_control`); this
+    server does not send that, so those models show 0%.
   - *Models*: switch `OPENROUTER_MODEL` / `OPENROUTER_MODEL_FAST` without a restart. The override is stored in
     the `config` table of the SQLite database and survives restarts; empty fields fall back to `.env`. It
     applies from the next LLM call. Ids are checked against the OpenRouter model list. It does nothing while

@@ -3,11 +3,20 @@
 // Integration check for the backend connection (src/lib/csl). Not the product UI:
 // it shows every piece of state the server sends, with the existing common components.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import styled, { useTheme } from "styled-components";
 import { Button, Composer, MessageBubble, ProfileImage, TextField } from "@/common/components";
-import { createSession, useCslSession } from "@/lib/csl";
-import type { Accuracy, Language, Role, StateVersion } from "@/lib/csl";
+import {
+  createSession,
+  fetchHealth,
+  forgetSession,
+  rememberSession,
+  setCurrentSessionId,
+  useCslSession,
+  useCurrentSessionId,
+  useRecentSessions,
+} from "@/lib/csl";
+import type { Accuracy, Health, Language, Role, StateVersion } from "@/lib/csl";
 import { peerColor } from "@/styles/peerColors";
 
 const Page = styled.main`
@@ -126,74 +135,189 @@ function StatePanel({ name, versions }: { name: string; versions: StateVersion[]
   );
 }
 
+function when(seconds: number) {
+  return new Date(seconds * 1000).toLocaleString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+// The session id lives in the URL (?session=<id>), so a reload or the back button returns to the
+// same session. See src/lib/csl/browserSession.ts.
 export default function DevPage() {
-  const [topic, setTopic] = useState("Why is summer hotter than winter?");
-  const [language, setLanguage] = useState<Language>("en");
-  const [useMock, setUseMock] = useState(false);
-  const [accessCode, setAccessCode] = useState("");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const { snapshot, connection, error, actions } = useCslSession(sessionId);
-
-  const start = async () => {
-    setCreateError(null);
-    try {
-      const created = await createSession({ topic, language, accessCode: accessCode || null, pipeline: useMock ? "mock" : null });
-      setSessionId(created.sessionId);
-    } catch (cause) {
-      setCreateError(cause instanceof Error ? cause.message : String(cause));
-    }
-  };
-
-  if (!sessionId || !snapshot) {
+  const sessionId = useCurrentSessionId();
+  if (sessionId === undefined) {
     return (
       <Page>
         <Card>
-          <Heading>Backend connection check</Heading>
-          <TextField id="topic" label="Topic" value={topic} onChange={setTopic} />
-          <Row>
-            <Meta>Discussion language</Meta>
-            <select
-              value={language}
-              onChange={(event) => setLanguage(event.target.value as Language)}
-              aria-label="Discussion language"
-            >
-              <option value="en">English</option>
-              <option value="ko">Korean</option>
-            </select>
-          </Row>
-          <Row>
-            <Meta>Agents</Meta>
-            <select
-              value={useMock ? "mock" : "server"}
-              onChange={(event) => setUseMock(event.target.value === "mock")}
-              aria-label="Agents"
-            >
-              <option value="server">Server pipeline (real LLM)</option>
-              <option value="mock">Mock (scripted, free)</option>
-            </select>
-          </Row>
-          {useMock ? (
+          <Meta>Loading…</Meta>
+        </Card>
+      </Page>
+    );
+  }
+  if (sessionId === null) return <StartForm />;
+  return <SessionView key={sessionId} sessionId={sessionId} />;
+}
+
+function StartForm() {
+  const [topic, setTopic] = useState("Why is summer hotter than winter?");
+  const [language, setLanguage] = useState<Language>("en");
+  // "" = the server's default pipeline; otherwise a name from health.sessionPipelines.
+  const [pipeline, setPipeline] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [health, setHealth] = useState<Health | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const recent = useRecentSessions();
+
+  useEffect(() => {
+    let alive = true;
+    fetchHealth().then(
+      (value) => {
+        if (alive) setHealth(value);
+      },
+      () => {}, // the selector falls back to "server default" and "mock"
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const named = health ? health.sessionPipelines.filter((name) => name !== health.pipeline) : ["mock"];
+  const free = health ? health.freePipelines.includes(pipeline) : pipeline === "mock";
+
+  const start = async () => {
+    setBusy(true);
+    setCreateError(null);
+    try {
+      const created = await createSession({
+        topic,
+        language,
+        accessCode: free ? null : accessCode || null,
+        pipeline: pipeline || null,
+      });
+      const { snapshot } = created;
+      rememberSession({
+        sessionId: created.sessionId,
+        topic: snapshot.topic,
+        pipeline: snapshot.pipeline,
+        createdAt: snapshot.createdAt,
+      });
+      setCurrentSessionId(created.sessionId);
+    } catch (cause) {
+      setCreateError(cause instanceof Error ? cause.message : String(cause));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Page>
+      <Card>
+        <Heading>Backend connection check</Heading>
+        <TextField id="topic" label="Topic" value={topic} onChange={setTopic} />
+        <Row>
+          <Meta>Discussion language</Meta>
+          <select
+            value={language}
+            onChange={(event) => setLanguage(event.target.value as Language)}
+            aria-label="Discussion language"
+          >
+            <option value="en">English</option>
+            <option value="ko">Korean</option>
+          </select>
+        </Row>
+        <Row>
+          <Meta>Agents</Meta>
+          <select value={pipeline} onChange={(event) => setPipeline(event.target.value)} aria-label="Agents">
+            <option value="">Server default{health ? ` (${health.pipeline})` : ""}</option>
+            {named.map((name) => (
+              <option key={name} value={name}>
+                {name}
+                {(health ? health.freePipelines.includes(name) : name === "mock") ? " (scripted, free)" : ""}
+              </option>
+            ))}
+          </select>
+        </Row>
+        {pipeline === "mock" ? (
+          <Meta>
+            The mock replays a fixed scenario (&quot;Why is summer hotter than winter?&quot;) and ignores the topic. It
+            makes no LLM calls and needs no access code.
+          </Meta>
+        ) : null}
+        {free ? null : (
+          <TextField
+            id="code"
+            label="Access code (if the server requires one)"
+            value={accessCode}
+            onChange={setAccessCode}
+          />
+        )}
+        <Row>
+          <Button onClick={start} disabled={busy || !topic.trim()}>
+            {busy ? "Starting…" : "Start session"}
+          </Button>
+        </Row>
+        {createError ? <ErrorText>Could not create the session: {createError}</ErrorText> : null}
+      </Card>
+
+      <div>
+        {recent.length > 0 ? (
+          <Card>
+            <Heading>Sessions started in this browser</Heading>
+            {recent.map((item) => (
+              <Row key={item.sessionId}>
+                <Meta style={{ flex: 1 }}>
+                  {item.topic} · {item.pipeline || "?"} · {when(item.createdAt)}
+                </Meta>
+                <Button variant="ghost" onClick={() => setCurrentSessionId(item.sessionId)}>
+                  Resume
+                </Button>
+                <Button variant="ghost" onClick={() => forgetSession(item.sessionId)}>
+                  Forget
+                </Button>
+              </Row>
+            ))}
             <Meta>
-              The mock replays a fixed scenario (&quot;Why is summer hotter than winter?&quot;) and ignores the topic. It
-              makes no LLM calls and needs no access code.
+              This list is kept in this browser only. A session can also be reopened with its link (the address of
+              this page while the session is open).
             </Meta>
-          ) : (
-            <TextField
-              id="code"
-              label="Access code (if the server requires one)"
-              value={accessCode}
-              onChange={setAccessCode}
-            />
-          )}
+          </Card>
+        ) : null}
+      </div>
+    </Page>
+  );
+}
+
+function SessionView({ sessionId }: { sessionId: string }) {
+  const [draft, setDraft] = useState("");
+  const { snapshot, connection, error, actions } = useCslSession(sessionId);
+  // Leaving closes the socket; the server pauses the discussion and keeps the session.
+  const leave = () => setCurrentSessionId(null);
+
+  if (!snapshot) {
+    const missing = connection === "closed";
+    return (
+      <Page>
+        <Card>
+          <Heading>{missing ? "This session cannot be opened" : "Connecting…"}</Heading>
+          <Meta>
+            {missing
+              ? `Session ${sessionId} does not exist on this server (or this page's origin is not allowed).`
+              : `Session ${sessionId} · socket: ${connection}`}
+          </Meta>
           <Row>
-            <Button onClick={start} disabled={!topic.trim() || Boolean(sessionId)}>
-              Start session
+            <Button
+              onClick={() => {
+                if (missing) forgetSession(sessionId);
+                leave();
+              }}
+            >
+              {missing ? "Start a new session" : "Leave"}
             </Button>
-            {sessionId ? <Meta>Connecting… ({connection})</Meta> : null}
           </Row>
-          {createError ? <ErrorText>Could not create the session: {createError}</ErrorText> : null}
         </Card>
       </Page>
     );
@@ -298,7 +422,16 @@ export default function DevPage() {
             </>
           ) : null}
           {phase === "building" && error ? <Button onClick={actions.resume}>Retry</Button> : null}
+          <span style={{ flex: 1 }} />
+          <Button variant={phase === "ended" ? "primary" : "ghost"} onClick={leave}>
+            {phase === "ended" ? "New session" : "Leave session"}
+          </Button>
         </Row>
+        <Meta>
+          {phase === "ended"
+            ? "This session has ended."
+            : "Leaving does not end the session: it pauses, and this page's link or the list on the start page reopens it."}
+        </Meta>
       </Card>
 
       <div>

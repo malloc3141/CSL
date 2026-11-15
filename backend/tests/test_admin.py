@@ -87,18 +87,28 @@ def test_usage_sessions_and_history(tmp_path):
         store.log_event(sid, 9003, ts, "llm.call", {"model": "x/unknown", "seconds": 1.0, "promptTokens": 5,
                                                    "completionTokens": 5, "reasoningTokens": 3})
         store.log_event(sid, 9004, ts, "llm.call", {"model": "a/main", "seconds": 0.5, "error": "boom"})
+        # Two calls that report prompt-cache figures: 600 of 1000 input tokens read from the cache.
+        store.log_event(sid, 9005, ts, "llm.call", {"model": "a/fast", "seconds": 1.0, "promptTokens": 800,
+                                                   "completionTokens": 10, "cost": 0.0, "cachedTokens": 600})
+        store.log_event(sid, 9006, ts, "llm.call", {"model": "a/fast", "seconds": 1.0, "promptTokens": 200,
+                                                   "completionTokens": 10, "cost": 0.0, "cachedTokens": 0,
+                                                   "cacheWriteTokens": 150})
 
         usage = http.get("/api/admin/usage?tzOffset=540", headers=AUTH).json()
         total = usage["total"]
-        assert total["calls"] == 4 and total["errors"] == 1 and total["unpricedCalls"] == 1
+        assert total["calls"] == 6 and total["errors"] == 1 and total["unpricedCalls"] == 1
         assert total["cost"] == pytest.approx(0.503) and total["estimated"]
-        assert total["reasoningTokens"] == 3 and total["promptTokens"] == 2005
+        assert total["reasoningTokens"] == 3 and total["promptTokens"] == 3005
+        # The hit rate only counts calls that reported a cache figure (1000 of the 3005 input tokens).
+        assert total["cachedTokens"] == 600 and total["cacheWriteTokens"] == 150
+        assert total["cacheMeasuredTokens"] == 1000 and total["cacheHitRate"] == pytest.approx(0.6)
         assert usage["byModel"][0]["key"] == "a/main" and usage["byModel"][0]["calls"] == 3
+        assert usage["byModel"][0]["cacheHitRate"] is None and usage["byModel"][0]["cacheMeasuredTokens"] == 0
         assert len(usage["byDay"]) == 1 and len(usage["byDay"][0]["key"]) == 10
         assert usage["openrouter"]["usage"] == 1.25 and usage["openrouter"]["limitRemaining"] == 38.75
 
         rows = http.get("/api/admin/sessions", headers=AUTH).json()
-        assert rows[0]["sessionId"] == sid and rows[0]["llmCalls"] == 4 and rows[0]["live"]
+        assert rows[0]["sessionId"] == sid and rows[0]["llmCalls"] == 6 and rows[0]["live"]
         assert rows[0]["cost"] == pytest.approx(0.503)
         detail = http.get(f"/api/admin/sessions/{sid}", headers=AUTH).json()
         assert detail["live"] and detail["snapshot"]["sessionId"] == sid
@@ -134,7 +144,16 @@ def test_llm_uses_override_and_logs_cost(tmp_path):
         usage = SimpleNamespace(prompt_tokens=10, completion_tokens=5, cost=0.0012,
                                 completion_tokens_details=SimpleNamespace(reasoning_tokens=3))
         llm._log("complete", "b/main", time.monotonic(), usage, 20)
+        cached = SimpleNamespace(prompt_tokens=900, completion_tokens=5,
+                                 prompt_tokens_details=SimpleNamespace(cached_tokens=700, cache_write_tokens=0))
+        llm._log("complete", "b/main", time.monotonic(), cached, 20)
+        missed = SimpleNamespace(prompt_tokens=900, completion_tokens=5,
+                                 prompt_tokens_details=SimpleNamespace(cached_tokens=0, cache_write_tokens=880))
+        llm._log("complete", "b/main", time.monotonic(), missed, 20)
     finally:
         current_session.reset(token)
     data = logged[0][1]
     assert data["cost"] == 0.0012 and data["reasoningTokens"] == 3 and data["promptTokens"] == 10
+    assert "cachedTokens" not in data  # the provider reported no cache figure
+    assert logged[1][1]["cachedTokens"] == 700 and "cacheWriteTokens" not in logged[1][1]
+    assert logged[2][1]["cachedTokens"] == 0 and logged[2][1]["cacheWriteTokens"] == 880

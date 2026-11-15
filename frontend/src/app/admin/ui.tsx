@@ -169,6 +169,11 @@ export function int(value: number): string {
   return value.toLocaleString("en-US");
 }
 
+/** A ratio (0–1) as a percentage; "–" when there is nothing to divide by. */
+export function percent(value: number | null | undefined): string {
+  return value == null ? "–" : `${(value * 100).toFixed(1)}%`;
+}
+
 /** USD per million tokens. */
 export function price(value: number): string {
   return value === 0 ? "–" : `$${value < 0.1 ? value.toFixed(3) : value.toFixed(2)}`;

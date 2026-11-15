@@ -10,8 +10,8 @@ different, partly wrong mental models of a topic, in order to notice gaps in the
 | Page | What |
 | --- | --- |
 | `/` | Static demo of the common UI components. The product UI goes here. |
-| `/dev` | Bare page that runs a whole session against the backend: setup chat → classroom → discussion → knowledge-state panels. Also the deployment smoke test. |
-| `/admin` | LLM usage and cost, runtime model switch, session history and event log. Needs the admin token. |
+| `/dev` | Bare page that runs a whole session against the backend: setup chat → classroom → discussion → knowledge-state panels. Picks the agents per session, keeps the session in the URL (reload returns to it). Also the deployment smoke test. |
+| `/admin` | LLM usage, cost and prompt-cache hit rate, runtime model switch, session history and event log. Needs the admin token. |
 
 Working on this project? Start with **[HANDOFF.md](HANDOFF.md)** (한국어 / English): who works where, and how
 to run, test and ship each part.
@@ -58,15 +58,16 @@ pnpm dev          # open http://localhost:3000/dev
 To run on real models, copy `backend/.env.example` to `backend/.env` and set `PIPELINE=baseline`,
 `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`. `.env` files are never committed.
 
-A session can always ask for the scripted mock, whatever the server runs ("Mock" on `/dev`, or
-`createSession({ topic, pipeline: "mock" })`): no LLM calls, no cost, no access code.
+`PIPELINE` is only the default. A session can ask for any registered pipeline by name (the "Agents" selector
+on `/dev`, or `createSession({ topic, pipeline: "<name>" })`). `mock` is always there: no LLM calls, no cost, no
+access code. Registering a new one is one line in `backend/app/pipeline/__init__.py`.
 
 ## Check before pushing
 
 A push to `main` goes live only if both of these pass on the server:
 
 ```bash
-cd backend  && uv run pytest        # 26 tests, ~4 s, no network
+cd backend  && uv run pytest        # 27 tests, ~4 s, no network
 cd frontend && pnpm build           # includes the type check
 ```
 

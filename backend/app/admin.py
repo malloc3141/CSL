@@ -3,7 +3,8 @@
     GET  /api/admin/sessions                 every stored session, with LLM cost
     GET  /api/admin/sessions/{id}            snapshot (messages, states) + pipeline scratch
     GET  /api/admin/sessions/{id}/events     raw event log
-    GET  /api/admin/usage?tzOffset=540       LLM usage by model and day, plus the OpenRouter key's spend
+    GET  /api/admin/usage?tzOffset=540       LLM usage (tokens, cost, prompt-cache hit rate) by model and
+                                             day, plus the OpenRouter key's spend
     GET  /api/admin/config                   models in use
     PUT  /api/admin/config                   switch models at runtime (persisted; "" = back to .env)
     GET  /api/admin/models                   OpenRouter model list with prices
@@ -60,6 +61,10 @@ class _Acc:
         b.prompt_tokens += prompt
         b.completion_tokens += completion
         b.reasoning_tokens += data.get("reasoningTokens") or 0
+        if isinstance(data.get("cachedTokens"), int):  # absent = the call reported no cache figure
+            b.cached_tokens += data["cachedTokens"]
+            b.cache_measured_tokens += prompt
+        b.cache_write_tokens += data.get("cacheWriteTokens") or 0
         self.seconds += data.get("seconds") or 0.0
         if isinstance(data.get("cost"), (int, float)):
             b.cost += data["cost"]
@@ -74,6 +79,8 @@ class _Acc:
     def done(self) -> UsageBucket:
         self.b.avg_seconds = round(self.seconds / self.b.calls, 3) if self.b.calls else 0.0
         self.b.cost = round(self.b.cost, 6)
+        if self.b.cache_measured_tokens:
+            self.b.cache_hit_rate = round(self.b.cached_tokens / self.b.cache_measured_tokens, 4)
         return self.b
 
 

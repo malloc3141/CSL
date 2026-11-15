@@ -41,29 +41,32 @@ pnpm dev
 - 로컬 프론트엔드는 **로컬 백엔드**에 붙여야 합니다. 실서버 백엔드는 `https://csl.kimhm.in` 에서 온 요청만 받습니다.
 - 실제 모델로 돌리려면 `backend/.env.example`을 `backend/.env`로 복사하고 `PIPELINE`, `OPENROUTER_API_KEY`,
   `OPENROUTER_MODEL`을 채웁니다. `.env`는 커밋되지 않습니다. 키와 토큰을 추적되는 파일에 넣지 마세요.
-- `main`에 push하면 서버에서 `uv run pytest`(백엔드 26개)와 `pnpm build`(타입 검사 포함)를 먼저 돌립니다.
+- `main`에 push하면 서버에서 `uv run pytest`(백엔드 27개)와 `pnpm build`(타입 검사 포함)를 먼저 돌립니다.
   하나라도 실패하면 배포되지 않고 실서버는 그대로입니다. push 전에 로컬에서 두 명령을 돌려 보세요.
 - push가 곧 배포이므로, 브랜치에서 작업하고 통과한 뒤 `main`에 합치는 것을 권장합니다.
-- 배포는 코드만 바꿉니다. 서버의 `backend/.env`(`PIPELINE`, 키, access code)는 Hyunmin이 직접 바꿉니다.
+- 배포는 코드만 바꿉니다. 서버의 `backend/.env`(기본 `PIPELINE`, 키, access code)는 Hyunmin이 직접 바꿉니다.
+  자기 파이프라인을 실서버에서 돌려보는 데는 `.env` 변경이 필요 없습니다(6절).
 
 ### 3. 담당별 작업 위치
 
 | 담당 | 맡은 것 | 작업 위치 | 읽을 문서 |
 | --- | --- | --- | --- |
-| Alex | 에이전트 knowledge state | `Pipeline`의 `build_classroom`, `update_states` | [PIPELINE.md](backend/docs/PIPELINE.md) |
+| Alex | 설정 대화, 에이전트 knowledge state | `Pipeline`의 `init_turn`, `build_classroom`, `update_states` | [PIPELINE.md](backend/docs/PIPELINE.md) |
 | Seongho | 토론 진행, 발화 순서, 학습자 참여 | `Pipeline`의 `select_speaker`, `speak` | [PIPELINE.md](backend/docs/PIPELINE.md) |
 | Jeeyun | 프론트엔드 UI | `frontend/` (`src/lib/csl`, `src/app/dev`, `src/app/admin` 제외) | [PROTOCOL.md](backend/docs/PROTOCOL.md) |
 | Hyunmin | 서빙 레이어, 프론트↔에이전트 연결, 배포, 관리자 페이지 | `backend/`(실제 파이프라인 제외), `frontend/src/lib/csl`, `src/app/dev`, `src/app/admin`, `deploy/` | [backend/README.md](backend/README.md) |
 
-`Pipeline`의 다섯 번째 메서드 `init_turn`(설정 대화)은 **담당이 정해지지 않았습니다**. 정해질 때까지는 baseline의
-구현을 그대로 가져다 쓰면 됩니다.
+### 4. Alex: 설정 대화와 knowledge state
 
-### 4. Alex: knowledge state
-
-**어디서.** `build_classroom`과 `update_states`. 참고 구현은
-[baseline.py](backend/app/pipeline/baseline.py)의 `CLASSROOM_SYSTEM`, `STATE_SYSTEM` 프롬프트와 같은 이름의 메서드입니다.
+**어디서.** `init_turn`, `build_classroom`, `update_states`. 참고 구현은
+[baseline.py](backend/app/pipeline/baseline.py)의 `CLASSROOM_SYSTEM`, `STATE_SYSTEM`, `INIT_SYSTEM`, `INIT_STAGES`
+프롬프트와 같은 이름의 메서드입니다.
 
 **무엇을 반환하나.**
+- `init_turn(session, out)` → 가이드의 다음 말을 `out.write()`로 쓰고 `InitResult(done)`을 반환합니다. 처음에는
+  빈 `session.init_transcript`로, 그 뒤로는 학습자가 답할 때마다 호출됩니다. `done=True`를 반환하면 설정 대화가
+  끝나고 `build_classroom`이 호출됩니다. 이 대화의 내용이 `build_classroom`의 입력입니다. baseline은
+  질문 → 되묻기 → 마무리의 3단계입니다. 빈 발화는 오류로 처리됩니다.
 - `build_classroom(session)` → `Classroom(participants, states, focus)`. 튜터 1명과 피어들, 피어 id별 초기
   `KnowledgeState`. 입력은 `session.topic`과 설정 대화 `session.init_transcript`입니다.
 - `update_states(session, message)` → `list[StateUpdate]`. 토론에 들어간 메시지(에이전트, 학습자 모두)마다
@@ -113,12 +116,11 @@ pnpm dev
 ```
 backend/app/pipeline/csl/
   __init__.py      class CslPipeline: 다섯 메서드, 각각 아래 모듈을 호출
-  knowledge.py     Alex: build_classroom, update_states
+  knowledge.py     Alex: init_turn, build_classroom, update_states
   discussion.py    Seongho: select_speaker, speak
 ```
 
-이 경우 설정값은 `PIPELINE=app.pipeline.csl:CslPipeline`입니다. `baseline.py`를 복사해서 시작하면 바로 돌아갑니다.
-`baseline.py` 자체는 참고용으로 남겨 두세요.
+`baseline.py`를 복사해서 시작하면 바로 돌아갑니다. `baseline.py` 자체는 참고용으로 남겨 두세요.
 
 **둘 사이의 계약.** (1) `speak`가 프롬프트에 넣는 `KnowledgeState`의 모양, (2) `session.scratch`의 키(각자
 다른 키를 쓰기), (3) `select_speaker`가 필요로 하는 기록을 `update_states`에 넣는 방법.
@@ -143,8 +145,23 @@ uv run pytest
 - 새 Python 패키지는 `backend/pyproject.toml`의 `dependencies`에 넣습니다.
 - 실서버에서 확인: `/admin` → Sessions에서 세션별 대화, 모든 state 버전, `scratch`, 이벤트 로그, 비용을 볼 수 있습니다.
 
-**실서버에 올리기.** `main`에 push(코드 배포) → Hyunmin에게 서버의 `PIPELINE` 값을 바꿔 달라고 요청.
-그 전까지 실서버는 `baseline`으로 돌아갑니다.
+**실서버에서 돌려보기 (Hyunmin을 거치지 않음).** `backend/app/pipeline/__init__.py`의 `SESSION_PIPELINES`에
+한 줄을 추가하고 `main`에 push합니다.
+
+```python
+SESSION_PIPELINES: dict[str, str] = {
+    "mock": "app.pipeline.mock:MockPipeline",
+    "baseline": "app.pipeline.baseline:BaselinePipeline",
+    "csl": "app.pipeline.csl:CslPipeline",       # <- 추가
+}
+```
+
+배포가 끝나면 `https://csl.kimhm.in/dev`의 "Agents"에서 `csl`을 고르고 세션을 시작합니다. **그 세션만** 여러분의
+파이프라인으로 돌고, 다른 사람의 세션과 서버 기본값(`baseline`)은 그대로입니다. LLM을 쓰므로 access code가
+필요합니다. 등록한 모듈이 import되지 않으면 `uv run pytest`가 실패해서 배포되지 않습니다.
+
+**기본값으로 만들기.** 실제 파이프라인이 준비되면 Hyunmin에게 서버 기본값(`PIPELINE=csl`)을 바꿔 달라고 요청합니다.
+그 전까지 이름 없이 만든 세션은 `baseline`으로 돕니다.
 
 **인터페이스가 부족하면.** `base.py`나 `protocol.py`를 바꿔야 하는 경우(예: 패널에 보여줄 새 필드) Hyunmin에게
 알려 주세요. `protocol.py`를 바꾸면 `uv run python scripts/gen_ts.py`로 프론트엔드 타입을 다시 만들어야 합니다.
@@ -168,12 +185,16 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   access code도 필요 없습니다. 고정 시나리오("Why is summer hotter than winter?", 15턴, 영어/한국어)를
   재생하며 주제는 무시합니다. 15번째 턴에서 튜터가 학습자에게 설명을 요청합니다.
 - 실제 에이전트는 `pipeline`을 빼고 만듭니다. 실서버에서는 access code 입력이 필요합니다.
+  Alex와 Seongho가 등록한 파이프라인은 이름으로 고를 수 있고, 목록은 `fetchHealth()`가 돌려줍니다.
 
 **알아둘 것.**
 - `src/lib/csl/protocol.ts`는 생성되는 파일입니다. 손으로 고치지 마세요. 타입이 부족하면 Hyunmin에게 알려 주세요.
 - `/dev`와 `/admin`은 그대로 두세요. 배포 스크립트가 `/dev`의 200 응답을 확인합니다.
-- 새로고침 후에도 세션을 이어가려면 `sessionId`를 URL이나 sessionStorage에 보관했다가 `useCslSession`에 넘깁니다.
-  서버는 연결할 때마다 전체 snapshot을 보냅니다.
+- **로그인은 없습니다.** 세션 id만 기억하면 됩니다. 서버가 모든 세션을 보관하고 연결할 때마다 전체 snapshot을
+  보냅니다. `src/lib/csl`에 이미 도구가 있습니다: `useCurrentSessionId()`(URL의 `?session=<id>`),
+  `setCurrentSessionId(id | null)`(들어가기 / 나가기), `rememberSession()`과 `useRecentSessions()`(이 브라우저가
+  만든 세션 목록). 새로고침, 뒤로 가기, 링크 공유가 모두 같은 세션으로 돌아옵니다. 사용 예는 `/dev`와
+  [PROTOCOL.md](backend/docs/PROTOCOL.md)에 있습니다.
 - 서버가 볼 수 없는 UI 동작은 `actions.track(name, data)`로 기록하세요(예: 패널 열기). Milestone 5의 사용 분석에 씁니다.
 - UI 문구는 영어가 기본입니다(11-16에 `page.tsx`, `Composer`, `layout.tsx`의 문구가 영어로 바뀌었습니다).
   토론 언어는 세션을 만들 때 `language: "en" | "ko"`로 고릅니다.
@@ -196,15 +217,15 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 ### 8. Hyunmin에게 요청할 것
 
 - 실서버 access code, admin token(`/admin`), OpenRouter 키
-- 서버의 `PIPELINE`이나 다른 `.env` 값 변경, 서비스 재시작
+- 서버 기본 `PIPELINE`이나 다른 `.env` 값 변경, 서비스 재시작
 - `protocol.py`, `base.py`, 서버 동작(속도, 끼어들기, 저장)에 대한 변경
 - 배포 실패(GitHub Actions의 Deploy 워크플로)
 
 ### 9. 남은 일
 
-- Alex, Seongho: 실제 파이프라인 구현, `init_turn` 담당 정하기
+- Alex, Seongho: 실제 파이프라인 구현
 - Jeeyun: 제품 UI
-- Hyunmin: 실제 파이프라인으로 전환, 서버 재부팅 확인, 동시 사용자 확인, 보고서(URL, access code,
+- Hyunmin: 서버 기본값을 실제 파이프라인으로 전환, 서버 재부팅 확인, 동시 사용자 확인, 보고서(URL, access code,
   라이브러리와 도구 목록, 스크린샷, System Architecture 탭)
 
 ---
@@ -244,30 +265,32 @@ pnpm dev
 - A local frontend has to talk to a **local backend**. The live backend only accepts requests from `https://csl.kimhm.in`.
 - For real models, copy `backend/.env.example` to `backend/.env` and fill in `PIPELINE`, `OPENROUTER_API_KEY` and
   `OPENROUTER_MODEL`. `.env` is not committed. Never put keys or tokens in a tracked file.
-- On a push to `main` the server first runs `uv run pytest` (26 backend tests) and `pnpm build` (includes the type
+- On a push to `main` the server first runs `uv run pytest` (27 backend tests) and `pnpm build` (includes the type
   check). If either fails, nothing is deployed and the live site stays as it was. Run both locally before pushing.
 - A push is a deploy, so working on a branch and merging into `main` once both pass is recommended.
-- A deploy only changes code. The server's `backend/.env` (`PIPELINE`, keys, access code) is changed by Hyunmin by hand.
+- A deploy only changes code. The server's `backend/.env` (default `PIPELINE`, keys, access code) is changed by
+  Hyunmin by hand. Trying your own pipeline on the live server needs no `.env` change (section 6).
 
 ### 3. Who works where
 
 | Person | Area | Where | Read |
 | --- | --- | --- | --- |
-| Alex | Agent knowledge states | `build_classroom`, `update_states` of the `Pipeline` | [PIPELINE.md](backend/docs/PIPELINE.md) |
+| Alex | The setup chat, agent knowledge states | `init_turn`, `build_classroom`, `update_states` of the `Pipeline` | [PIPELINE.md](backend/docs/PIPELINE.md) |
 | Seongho | Discussion dynamics, turn allocation, learner participation | `select_speaker`, `speak` of the `Pipeline` | [PIPELINE.md](backend/docs/PIPELINE.md) |
 | Jeeyun | Frontend UI | `frontend/` (except `src/lib/csl`, `src/app/dev`, `src/app/admin`) | [PROTOCOL.md](backend/docs/PROTOCOL.md) |
 | Hyunmin | Serving layer, frontend↔agent integration, deployment, admin page | `backend/` (except the real pipeline), `frontend/src/lib/csl`, `src/app/dev`, `src/app/admin`, `deploy/` | [backend/README.md](backend/README.md) |
 
-The fifth `Pipeline` method, `init_turn` (the setup chat), has **no owner yet**. Until it has one, reuse the baseline's
-version as it is.
+### 4. Alex: the setup chat and knowledge states
 
-### 4. Alex: knowledge states
-
-**Where.** `build_classroom` and `update_states`. The reference is in
-[baseline.py](backend/app/pipeline/baseline.py): the `CLASSROOM_SYSTEM` and `STATE_SYSTEM` prompts and the methods of
-the same names.
+**Where.** `init_turn`, `build_classroom` and `update_states`. The reference is in
+[baseline.py](backend/app/pipeline/baseline.py): the `CLASSROOM_SYSTEM`, `STATE_SYSTEM`, `INIT_SYSTEM` and
+`INIT_STAGES` prompts and the methods of the same names.
 
 **What to return.**
+- `init_turn(session, out)` → write the guide's next message with `out.write()` and return `InitResult(done)`.
+  Called first with an empty `session.init_transcript`, then again after every learner reply. Returning
+  `done=True` ends the setup chat and `build_classroom` is called; what was said here is the input of
+  `build_classroom`. The baseline does it in three steps: ask → probe → close. An empty message counts as an error.
 - `build_classroom(session)` → `Classroom(participants, states, focus)`: one tutor, the peers, and an initial
   `KnowledgeState` per peer id. The inputs are `session.topic` and the setup chat, `session.init_transcript`.
 - `update_states(session, message)` → `list[StateUpdate]`. Called exactly once for every message that entered the
@@ -323,12 +346,12 @@ No file exists yet. A suggested structure (rename as you like):
 ```
 backend/app/pipeline/csl/
   __init__.py      class CslPipeline: the five methods, each calling into the modules below
-  knowledge.py     Alex: build_classroom, update_states
+  knowledge.py     Alex: init_turn, build_classroom, update_states
   discussion.py    Seongho: select_speaker, speak
 ```
 
-The setting is then `PIPELINE=app.pipeline.csl:CslPipeline`. Starting from a copy of `baseline.py` gives you
-something that runs at once. Leave `baseline.py` itself in place as the reference.
+Starting from a copy of `baseline.py` gives you something that runs at once. Leave `baseline.py` itself in place
+as the reference.
 
 **The contract between you.** (1) the shape of the `KnowledgeState` that `speak` puts into prompts, (2) the keys in
 `session.scratch` (use a different key each), (3) how the bookkeeping `select_speaker` needs gets into `update_states`.
@@ -354,8 +377,24 @@ uv run pytest
 - On the live server: `/admin` → Sessions shows each session's messages, every state version, `scratch`, the event
   log and the cost.
 
-**Going live.** Push to `main` (deploys the code) → ask Hyunmin to change `PIPELINE` on the server. Until then the
-live server keeps running `baseline`.
+**Trying it on the live server (without Hyunmin).** Add one line to `SESSION_PIPELINES` in
+`backend/app/pipeline/__init__.py` and push to `main`:
+
+```python
+SESSION_PIPELINES: dict[str, str] = {
+    "mock": "app.pipeline.mock:MockPipeline",
+    "baseline": "app.pipeline.baseline:BaselinePipeline",
+    "csl": "app.pipeline.csl:CslPipeline",       # <- add
+}
+```
+
+When the deploy has finished, pick `csl` under "Agents" on `https://csl.kimhm.in/dev` and start a session. **Only
+that session** runs on your pipeline; other people's sessions and the server's default (`baseline`) are untouched.
+It calls an LLM, so it needs the access code. If the registered module cannot be imported, `uv run pytest` fails and
+nothing is deployed.
+
+**Making it the default.** When the real pipeline is ready, ask Hyunmin to change the server's default
+(`PIPELINE=csl`). Until then sessions created without a name run on `baseline`.
 
 **If the interface is not enough.** If `base.py` or `protocol.py` has to change (a new field for the panel, for
 example), tell Hyunmin. After a change to `protocol.py` the frontend types are regenerated with
@@ -363,7 +402,7 @@ example), tell Hyunmin. After a change to `protocol.py` the frontend types are r
 
 ### 7. Jeeyun: frontend UI
 
-**Where.** `frontend/src/app/page.tsx` (a static demo for now) and new routes, `src/common`, `src/styles`.
+**Where.** `frontend/src/app/page.tsx` (currently a static demo) and new routes, `src/common`, `src/styles`.
 
 **The backend connection already exists.** Two things are all you need:
 
@@ -380,13 +419,17 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 - **Use mock sessions for UI work:** `createSession({ topic, pipeline: "mock" })`. No LLM calls, no cost, no access
   code. It replays a fixed scenario ("Why is summer hotter than winter?", 15 turns, English or Korean) and ignores
   the topic. In turn 15 the tutor asks the learner to explain.
-- For the real agents leave `pipeline` out. On the live server that needs an access-code field.
+- For the real agents leave `pipeline` out. On the live server that needs an access-code field. Pipelines that
+  Alex and Seongho register can be picked by name; `fetchHealth()` returns the list.
 
 **Good to know.**
 - `src/lib/csl/protocol.ts` is generated. Do not edit it by hand; if a type is missing, tell Hyunmin.
 - Leave `/dev` and `/admin` in place. The deploy script checks that `/dev` answers 200.
-- To continue a session after a reload, keep the `sessionId` (URL or sessionStorage) and pass it to `useCslSession`.
-  The server sends the full snapshot on every connect.
+- **There is no login.** The session id is all a page has to remember: the server keeps every session and sends
+  the full snapshot on every connect. The tools are already in `src/lib/csl`: `useCurrentSessionId()` (the
+  `?session=<id>` in the URL), `setCurrentSessionId(id | null)` (enter / leave), `rememberSession()` and
+  `useRecentSessions()` (the sessions this browser started). A reload, the back button and a shared link all return
+  to the same session. `/dev` and [PROTOCOL.md](backend/docs/PROTOCOL.md) show how to use them.
 - Log UI actions the server cannot see with `actions.track(name, data)` (opening a panel, for example). Milestone 5
   analyses usage from these.
 - UI text is English by default (on 11-16 the text in `page.tsx`, `Composer` and `layout.tsx` was switched to
@@ -410,13 +453,13 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 ### 8. Ask Hyunmin for
 
 - The live server's access code, the admin token (`/admin`), an OpenRouter key
-- Changes to `PIPELINE` or any other `.env` value on the server, service restarts
+- Changes to the server's default `PIPELINE` or any other `.env` value, service restarts
 - Changes to `protocol.py`, `base.py` or server behaviour (pacing, interruption, storage)
 - Failed deploys (the Deploy workflow in GitHub Actions)
 
 ### 9. What is left
 
-- Alex, Seongho: the real pipeline; decide who owns `init_turn`
+- Alex, Seongho: the real pipeline
 - Jeeyun: the product UI
-- Hyunmin: switch the server to the real pipeline, reboot test, check with several simultaneous users, the report
+- Hyunmin: switch the server's default to the real pipeline, reboot test, check with several simultaneous users, the report
   (URL, access code, list of libraries and tools, screenshots, the System Architecture tab)

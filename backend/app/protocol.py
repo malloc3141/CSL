@@ -141,8 +141,8 @@ class SessionSnapshot(Wire):
     session_id: str
     topic: str
     language: Language
-    # Name of the pipeline that runs this session: the server's PIPELINE, or "mock" if the
-    # session asked for it. "" for sessions stored before this field existed.
+    # Name of the pipeline that runs this session: the server's PIPELINE, or the one the session
+    # asked for (CreateSessionRequest.pipeline). "" for sessions stored before this field existed.
     pipeline: str = ""
     phase: Phase
     status: Status
@@ -281,14 +281,29 @@ class CreateSessionRequest(Wire):
     topic: str = Field(min_length=1, max_length=300)
     language: Language = "en"
     access_code: Optional[str] = None
-    # "mock": run this one session on the scripted mock (no LLM, no cost, no access code needed),
-    # whatever PIPELINE the server uses. For frontend development. None: the server's PIPELINE.
-    pipeline: Optional[Literal["mock"]] = None
+    # Run this one session on a named pipeline instead of the server's PIPELINE: a name from
+    # Health.session_pipelines (registered in app/pipeline/__init__.py). "mock" is the scripted
+    # scenario: no LLM, no cost, no access code needed. None: the server's PIPELINE.
+    pipeline: Optional[str] = Field(default=None, max_length=64)
 
 
 class CreateSessionResponse(Wire):
     session_id: str
     snapshot: SessionSnapshot
+
+
+class Health(Wire):
+    """GET /api/health"""
+
+    ok: bool = True
+    # The server's default pipeline (PIPELINE in backend/.env).
+    pipeline: str
+    # Names a session can ask for with CreateSessionRequest.pipeline.
+    session_pipelines: list[str]
+    # The ones among them that make no LLM calls and need no access code.
+    free_pipelines: list[str]
+    active_sessions: int
+    protocol_version: int = PROTOCOL_VERSION
 
 
 # --------------------------------------------------------------------------- admin REST
@@ -327,6 +342,15 @@ class UsageBucket(Wire):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     reasoning_tokens: int = 0
+    # Prompt cache. cached_tokens: input tokens read from the provider's cache. cache_write_tokens:
+    # input tokens written to it. cache_measured_tokens: input tokens of the calls that reported a
+    # cache figure at all (calls logged before this was recorded, and providers that do not report
+    # it, are left out). cache_hit_rate = cached_tokens / cache_measured_tokens, None if nothing
+    # was measured.
+    cached_tokens: int = 0
+    cache_write_tokens: int = 0
+    cache_measured_tokens: int = 0
+    cache_hit_rate: Optional[float] = None
     cost: float = 0.0
     # True if part of `cost` is estimated from list prices (the call reported no cost).
     estimated: bool = False
@@ -388,6 +412,7 @@ class ModelInfo(Wire):
 REST_MODELS: list[type[Wire]] = [
     CreateSessionRequest,
     CreateSessionResponse,
+    Health,
     AdminSessionRow,
     AdminSessionDetail,
     UsageReport,

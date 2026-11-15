@@ -111,12 +111,21 @@ export interface CreateSessionRequest {
   topic: string;
   language?: Language;
   accessCode?: string | null;
-  pipeline?: "mock" | null;
+  pipeline?: string | null;
 }
 
 export interface CreateSessionResponse {
   sessionId: string;
   snapshot: SessionSnapshot;
+}
+
+export interface Health {
+  ok: boolean;
+  pipeline: string;
+  sessionPipelines: string[];
+  freePipelines: string[];
+  activeSessions: number;
+  protocolVersion: number;
 }
 
 export interface AdminSessionRow {
@@ -216,6 +225,10 @@ export interface UsageBucket {
   promptTokens: number;
   completionTokens: number;
   reasoningTokens: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
+  cacheMeasuredTokens: number;
+  cacheHitRate: number | null;
   cost: number;
   estimated: boolean;
   unpricedCalls: number;

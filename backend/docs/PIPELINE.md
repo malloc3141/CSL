@@ -1,8 +1,8 @@
 # Plugging in the agents
 
 The server owns sessions, timing, the WebSocket and storage. The agents are one class with five async
-methods (`app/pipeline/base.py`). Implement it, set `PIPELINE=your.module:YourPipeline` in `backend/.env`,
-and it runs behind the same frontend.
+methods (`app/pipeline/base.py`). Implement it, register it by name (see "Running it on the server") or
+set `PIPELINE=your.module:YourPipeline` in `backend/.env`, and it runs behind the same frontend.
 
 ```python
 from app.llm import get_llm
@@ -23,9 +23,27 @@ class MyPipeline:
 `app/pipeline/baseline.py` is a complete example on OpenRouter; `mock.py` is one without an LLM.
 
 The module is imported with `backend/` as the working directory: put the code under `backend/` (for
-example `backend/app/pipeline/mine.py` → `PIPELINE=app.pipeline.mine:MyPipeline`). One pipeline serves
-every session and is loaded at startup, so a new `PIPELINE` value needs a restart. Extra Python
-packages go in `backend/pyproject.toml` (`dependencies`); the deploy runs `uv sync`.
+example `backend/app/pipeline/mine.py` → `app.pipeline.mine:MyPipeline`). Extra Python packages go in
+`backend/pyproject.toml` (`dependencies`); the deploy runs `uv sync`.
+
+## Running it on the server
+
+`PIPELINE` in `backend/.env` is only the server's default, loaded at startup. You do not need it to try
+your pipeline on the deployed server. Register it by name in `app/pipeline/__init__.py` and push:
+
+```python
+SESSION_PIPELINES: dict[str, str] = {
+    "mock": "app.pipeline.mock:MockPipeline",
+    "baseline": "app.pipeline.baseline:BaselinePipeline",
+    "mine": "app.pipeline.mine:MyPipeline",      # <- your line
+}
+```
+
+After the deploy, pick "mine" under "Agents" on `/dev` (or `POST /api/sessions` with `"pipeline": "mine"`).
+Only that session runs on your pipeline; everyone else keeps getting the default. It needs the access
+code like any session that calls an LLM. One instance of the class serves all its sessions, so keep
+per-session state in `session.scratch`, not on `self`. `uv run pytest` checks that every registered entry
+imports and has the five methods; a registration that fails that test is not deployed.
 
 ## When each method is called
 
@@ -37,8 +55,9 @@ packages go in `backend/pyproject.toml` (`dependencies`); the deploy runs `uv sy
 | `speak` | Right after `select_speaker` | Write the utterance to `out` (`await out.write(chunk)`; streaming or all at once) |
 | `update_states` | Exactly once after every message that entered the discussion, agent or learner | The peers whose state changed, each as a complete new `KnowledgeState` |
 
-Who owns what: turn allocation and learner participation are `select_speaker`; knowledge states are
-`build_classroom` and `update_states`; `speak` uses both.
+Who owns what: the setup chat (`init_turn`) and the knowledge states (`build_classroom`, `update_states`) are
+Alex's; turn allocation and learner participation (`select_speaker`) and the utterances (`speak`, which uses
+both) are Seongho's.
 
 ## What you can read
 

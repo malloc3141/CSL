@@ -20,6 +20,30 @@ scripted mock, whatever pipeline the server uses: no LLM calls, no cost, no acce
 "Why is summer hotter than winter?" scenario (en or ko) and ignores `topic`. Use it for frontend
 development against the deployed server; leave `pipeline` out for the real agents.
 
+**Other pipelines.** `pipeline` takes any name the server has registered. `fetchHealth()` returns them:
+`{ pipeline, sessionPipelines, freePipelines }` (the server's default, the names a session can ask for, and
+the ones among them that need no access code). The agent developers use this to try their pipeline on the
+deployed server; `/dev` shows the list as the "Agents" selector.
+
+**Staying in a session without a login.** The session id is all a page has to remember: the server keeps
+every session and sends the full snapshot on connect. `src/lib/csl/browserSession.ts` keeps the id in the
+URL (`?session=<id>`) and a short list of this browser's sessions in localStorage:
+
+```tsx
+import { rememberSession, setCurrentSessionId, useCslSession, useCurrentSessionId, useRecentSessions } from "@/lib/csl";
+
+const sessionId = useCurrentSessionId();        // undefined while hydrating, null = no session in the URL
+const { snapshot, actions } = useCslSession(sessionId ?? null);
+
+const created = await createSession({ topic });
+rememberSession({ sessionId: created.sessionId, topic, pipeline: created.snapshot.pipeline, createdAt: created.snapshot.createdAt });
+setCurrentSessionId(created.sessionId);          // reload, back button and a shared link now return here
+setCurrentSessionId(null);                       // leave: the session pauses on the server and can be reopened
+const recent = useRecentSessions();              // "continue where you left off"
+```
+
+If the id in the URL does not exist, `connection` becomes `closed` and `snapshot` stays `null`.
+
 | `snapshot` field | Use |
 | --- | --- |
 | `phase` | `init` (setup chat) → `building` (classroom being created) → `ready` (show the classroom, wait for start) → `discussion` → `ended` |
@@ -31,7 +55,7 @@ development against the deployed server; leave `pipeline` out for the real agent
 | `invitedTurnId` | Set while the tutor waits for the learner's explanation |
 | `pace` | `{ auto, speed }` |
 | `focus` | One line: what the session is built around |
-| `pipeline` | Which agents run the session: the server's pipeline (e.g. `baseline`) or `mock` |
+| `pipeline` | Which agents run the session: the server's default (e.g. `baseline`) or the name the session asked for (e.g. `mock`) |
 
 | `actions` | Effect |
 | --- | --- |
@@ -58,7 +82,8 @@ development against the deployed server; leave `pipeline` out for the real agent
   (`turn.cancelled`, `activeTurn` becomes null) and the learner's message is added.
 * **Leaving and returning.** Closing the tab pauses the discussion; reconnecting resumes it. On every
   (re)connect the server sends the full snapshot, so the client never has to replay anything. To continue
-  a session after a reload, keep the `sessionId` (URL or sessionStorage) and pass it to `useCslSession`.
+  a session after a reload, keep the `sessionId` and pass it to `useCslSession` (`useCurrentSessionId`
+  above does this with the URL).
 * **Errors.** When the agents fail, the discussion pauses and `error` is set. `resume()` retries.
 
 ## Wire format
@@ -67,8 +92,9 @@ REST (JSON, camelCase):
 
 | | |
 | --- | --- |
-| `POST /api/sessions` `{ topic, language?, accessCode?, pipeline? }` | → `{ sessionId, snapshot }`. `pipeline: "mock"` needs no access code |
-| `GET /api/sessions/{id}` | → snapshot |
+| `POST /api/sessions` `{ topic, language?, accessCode?, pipeline? }` | → `{ sessionId, snapshot }`. `pipeline` is a name from `sessionPipelines`; `"mock"` needs no access code. 403 = wrong access code, 422 = unknown pipeline or empty topic, 429 / 503 = rate limit / server full |
+| `GET /api/sessions/{id}` | → snapshot (404 = no such session) |
+| `GET /api/health` | → `{ ok, pipeline, sessionPipelines, freePipelines, activeSessions, protocolVersion }` |
 | `/api/admin/*` | admin page only (`src/app/admin`, client `src/lib/csl/admin.ts`); see `backend/README.md` |
 
 WebSocket `ws(s)://<host>/ws/sessions/{id}`. Close code 4404 = no such session, 4403 = origin not allowed.

@@ -1,4 +1,4 @@
-import type { CreateSessionRequest, CreateSessionResponse, SessionSnapshot } from "./protocol";
+import type { CreateSessionRequest, CreateSessionResponse, Health, SessionSnapshot } from "./protocol";
 
 /** Backend origin, e.g. https://api.example.com. Set NEXT_PUBLIC_CSL_API_URL in .env.local. */
 export const API_URL = (process.env.NEXT_PUBLIC_CSL_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
@@ -23,6 +23,11 @@ export async function createSession(request: CreateSessionRequest): Promise<Crea
     body: JSON.stringify(request),
   });
   return readJson<CreateSessionResponse>(response);
+}
+
+/** The server's default pipeline and the pipelines a session can ask for by name. */
+export async function fetchHealth(): Promise<Health> {
+  return readJson<Health>(await fetch(`${API_URL}/api/health`, { cache: "no-store" }));
 }
 
 export async function fetchSession(sessionId: string): Promise<SessionSnapshot> {

@@ -28,8 +28,8 @@ from .admin import admin_router, load_model_override
 from .config import Settings, get_settings
 from .llm import effective_models
 from .orchestrator import Connection, SessionRegistry
-from .pipeline import Pipeline, load_pipeline
-from .protocol import CLIENT_COMMANDS, PROTOCOL_VERSION, CreateSessionRequest, CreateSessionResponse, ErrorEvent
+from .pipeline import FREE_PIPELINES, SESSION_PIPELINES, Pipeline, load_pipeline
+from .protocol import CLIENT_COMMANDS, CreateSessionRequest, CreateSessionResponse, ErrorEvent, Health
 from .store import Store
 
 log = logging.getLogger("csl")
@@ -76,19 +76,21 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[Pipeline]
 
     @app.get("/api/health")
     async def health() -> dict[str, Any]:
-        return {
-            "ok": True,
-            "pipeline": registry().pipeline.name,
-            # Pipelines a session can ask for with CreateSessionRequest.pipeline.
-            "sessionPipelines": ["mock"],
-            "activeSessions": len(registry().runners),
-            "protocolVersion": PROTOCOL_VERSION,
-        }
+        return Health(
+            pipeline=registry().pipeline.name,
+            session_pipelines=list(SESSION_PIPELINES),
+            free_pipelines=[name for name in SESSION_PIPELINES if name in FREE_PIPELINES],
+            active_sessions=len(registry().runners),
+        ).wire()
 
     @app.post("/api/sessions")
     async def create_session(body: CreateSessionRequest, request: Request) -> dict[str, Any]:
-        # Mock sessions cost nothing, so they do not need the access code (rate limit still applies).
-        if body.pipeline != "mock" and settings.access_code and not secrets.compare_digest(
+        wanted = (body.pipeline or "").strip() or None
+        if wanted and not registry().knows_pipeline(wanted):
+            raise HTTPException(422, f"Unknown pipeline {wanted!r}. Available: {', '.join(SESSION_PIPELINES)}.")
+        # Sessions on a pipeline without LLM calls cost nothing, so they do not need the access code
+        # (rate limit and MAX_ACTIVE_SESSIONS still apply).
+        if wanted not in FREE_PIPELINES and settings.access_code and not secrets.compare_digest(
             (body.access_code or "").encode(), settings.access_code.encode()
         ):
             raise HTTPException(403, "Wrong access code.")
@@ -103,8 +105,13 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[Pipeline]
             raise HTTPException(503, "The server is busy. Try again in a few minutes.")
         if not body.topic.strip():
             raise HTTPException(422, "Topic must not be empty.")
+        try:
+            runner = registry().create(body.topic, body.language, wanted)
+        except Exception as exc:  # a registered pipeline that cannot be imported or constructed
+            log.error("pipeline %r could not be loaded: %r", wanted, exc, exc_info=exc)
+            detail = f" ({exc!r})" if settings.debug else ""
+            raise HTTPException(500, f"Pipeline {wanted!r} could not be loaded.{detail}")
         window.append(now)
-        runner = registry().create(body.topic, body.language, body.pipeline)
         return CreateSessionResponse(session_id=runner.session.id, snapshot=runner.session.snapshot()).wire()
 
     @app.get("/api/sessions/{session_id}")
