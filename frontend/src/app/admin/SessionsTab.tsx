@@ -84,13 +84,13 @@ function StateHistory({ name, versions }: { name: string; versions: StateVersion
   return (
     <Details>
       <summary>
-        {name} · {versions.length}개 버전
+        {name} · {versions.length} versions
       </summary>
       {[...versions].reverse().map((v) => (
         <div key={v.version}>
           <Meta>
             v{v.version}
-            {v.turnNumber ? ` · ${v.turnNumber}턴에서 변경` : " · 초기 상태"} · {dateTime(v.createdAt)}
+            {v.turnNumber ? ` · changed in turn ${v.turnNumber}` : " · initial state"} · {dateTime(v.createdAt)}
           </Meta>
           <ul>
             {v.state.beliefs.map((b) => (
@@ -100,16 +100,16 @@ function StateHistory({ name, versions }: { name: string; versions: StateVersion
               </li>
             ))}
             <li>
-              설명: {mark(v.state.explanationAccuracy)}
+              Explanation: {mark(v.state.explanationAccuracy)}
               {v.state.explanation}
             </li>
             {v.state.openQuestions.map((q) => (
-              <li key={q}>의문: {q}</li>
+              <li key={q}>Question: {q}</li>
             ))}
           </ul>
           {v.changes.length ? (
             <Meta>
-              변경:{" "}
+              Changes:{" "}
               {v.changes.map((c) => `${c.field} ${c.kind}${c.after ? ` → ${c.after}` : ""}`).join(" / ")}
             </Meta>
           ) : null}
@@ -148,14 +148,14 @@ function EventLog({ token, sessionId }: { token: string; sessionId: string }) {
   return (
     <Card>
       <Row>
-        <Heading>이벤트 로그</Heading>
+        <Heading>Event log</Heading>
         <Button variant="ghost" onClick={load}>
-          {events ? "다시 불러오기" : "불러오기"}
+          {events ? "Reload" : "Load"}
         </Button>
         {events ? (
           <>
-            <select value={type} onChange={(event) => setType(event.target.value)} aria-label="이벤트 종류">
-              <option value="">전체 ({events.length})</option>
+            <select value={type} onChange={(event) => setType(event.target.value)} aria-label="Event type">
+              <option value="">All ({events.length})</option>
               {types.map((t) => (
                 <option key={t} value={t}>
                   {t} ({events.filter((e) => e.type === t).length})
@@ -163,7 +163,7 @@ function EventLog({ token, sessionId }: { token: string; sessionId: string }) {
               ))}
             </select>
             <Button variant="ghost" onClick={() => download(`csl-${sessionId}-events.json`, events)}>
-              JSON 저장
+              Download JSON
             </Button>
           </>
         ) : null}
@@ -175,9 +175,9 @@ function EventLog({ token, sessionId }: { token: string; sessionId: string }) {
             <thead>
               <tr>
                 <th className="num">seq</th>
-                <th>시각</th>
-                <th>종류</th>
-                <th>데이터</th>
+                <th>Time</th>
+                <th>Type</th>
+                <th>Data</th>
               </tr>
             </thead>
             <tbody>
@@ -204,13 +204,13 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
   const { data: detail, error, reload: load } = useAdminLoad<AdminSessionDetail>(fetcher);
 
   if (error) return <ErrorText>{error}</ErrorText>;
-  if (!detail) return <Meta>불러오는 중…</Meta>;
+  if (!detail) return <Meta>Loading…</Meta>;
 
   const s = detail.snapshot;
   const peers = s.participants.filter((p) => p.role === "peer");
   const sections: { title: string; messages: Message[] }[] = [
-    { title: "초기 설정 대화", messages: s.messages.filter((m) => m.channel === "init") },
-    { title: "토론", messages: s.messages.filter((m) => m.channel === "discussion") },
+    { title: "Setup chat", messages: s.messages.filter((m) => m.channel === "init") },
+    { title: "Discussion", messages: s.messages.filter((m) => m.channel === "discussion") },
   ];
 
   return (
@@ -219,15 +219,15 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
         <Row>
           <Heading>{s.topic}</Heading>
           <Button variant="ghost" onClick={load}>
-            새로고침
+            Refresh
           </Button>
           <Button variant="ghost" onClick={() => download(`csl-${s.sessionId}.json`, detail)}>
-            JSON 저장
+            Download JSON
           </Button>
         </Row>
         <Meta>
-          {s.sessionId} · {s.phase} / {s.status} · {s.language} · 시작 {dateTime(s.createdAt)} ·{" "}
-          {detail.live ? "메모리에 있음" : "저장본"}
+          {s.sessionId} · {s.phase} / {s.status} · {s.language} · started {dateTime(s.createdAt)} ·{" "}
+          {detail.live ? "in memory" : "stored copy"}
         </Meta>
         {s.focus ? <Meta>focus: {s.focus}</Meta> : null}
         {s.participants.length ? (
@@ -253,7 +253,7 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
                   <Speaker>
                     {m.turnNumber ? `${m.turnNumber}. ` : ""}
                     {m.speakerName} · {dateTime(m.createdAt)}
-                    {m.invited ? " · 초대받은 설명" : ""}
+                    {m.invited ? " · invited explanation" : ""}
                   </Speaker>
                   {m.text}
                 </Line>
@@ -265,7 +265,7 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
 
       {peers.length ? (
         <Card>
-          <Heading>지식 상태 이력</Heading>
+          <Heading>Knowledge state history</Heading>
           {peers.map((p) =>
             s.states[p.id] ? <StateHistory key={p.id} name={p.name} versions={s.states[p.id]} /> : null,
           )}
@@ -274,7 +274,7 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
 
       <Card>
         <Details>
-          <summary>파이프라인 scratch</summary>
+          <summary>Pipeline scratch</summary>
           <Pre>{JSON.stringify(detail.scratch, null, 2)}</Pre>
         </Details>
       </Card>
@@ -297,25 +297,25 @@ export function SessionsTab({ token }: { token: string }) {
     <Split>
       <Card>
         <Row>
-          <Heading>세션 {rows ? `(${rows.length})` : ""}</Heading>
+          <Heading>Sessions {rows ? `(${rows.length})` : ""}</Heading>
           <Button variant="ghost" onClick={load}>
-            새로고침
+            Refresh
           </Button>
         </Row>
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="주제 또는 세션 ID 검색" />
+        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by topic or session ID" />
         {error ? <ErrorText>{error}</ErrorText> : null}
-        {rows && !rows.length ? <Meta>아직 세션이 없습니다.</Meta> : null}
+        {rows && !rows.length ? <Meta>No sessions yet.</Meta> : null}
         {shown.length ? (
           <TableWrap>
             <Table>
               <thead>
                 <tr>
-                  <th>시작</th>
-                  <th>주제</th>
-                  <th>단계</th>
-                  <th className="num">메시지</th>
+                  <th>Started</th>
+                  <th>Topic</th>
+                  <th>Phase</th>
+                  <th className="num">Messages</th>
                   <th className="num">LLM</th>
-                  <th className="num">비용</th>
+                  <th className="num">Cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -340,7 +340,7 @@ export function SessionsTab({ token }: { token: string }) {
             </Table>
           </TableWrap>
         ) : null}
-        <Meta>● = 지금 서버 메모리에 올라와 있는 세션</Meta>
+        <Meta>● = currently loaded in server memory</Meta>
       </Card>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
@@ -348,7 +348,7 @@ export function SessionsTab({ token }: { token: string }) {
           <SessionView key={selected} token={token} sessionId={selected} />
         ) : (
           <Card>
-            <Meta>목록에서 세션을 고르세요.</Meta>
+            <Meta>Pick a session from the list.</Meta>
           </Card>
         )}
       </div>

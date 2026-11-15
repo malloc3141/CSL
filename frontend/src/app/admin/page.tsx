@@ -15,9 +15,9 @@ import { Card, ErrorText, Heading, Input, Label, Meta, Row, errorMessage } from 
 
 const TOKEN_KEY = "csl.adminToken";
 const TABS = [
-  { id: "usage", label: "사용량" },
-  { id: "model", label: "모델" },
-  { id: "sessions", label: "대화 이력" },
+  { id: "usage", label: "Usage" },
+  { id: "model", label: "Models" },
+  { id: "sessions", label: "Sessions" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -105,9 +105,9 @@ export default function AdminPage() {
           }}
         >
           <Card>
-            <Heading>CSL 관리자</Heading>
+            <Heading>CSL Admin</Heading>
             <Label htmlFor="admin-token">
-              관리자 토큰 (서버 backend/.env의 ADMIN_TOKEN)
+              Admin token (ADMIN_TOKEN in backend/.env on the server)
               <Input
                 id="admin-token"
                 type="password"
@@ -118,11 +118,11 @@ export default function AdminPage() {
             </Label>
             <Row>
               <Button type="submit" disabled={busy || !draft.trim()}>
-                {busy ? "확인 중…" : "들어가기"}
+                {busy ? "Checking…" : "Sign in"}
               </Button>
             </Row>
             {error ? <ErrorText>{error}</ErrorText> : null}
-            <Meta>토큰은 이 탭의 sessionStorage에만 보관되고, 탭을 닫으면 지워집니다.</Meta>
+            <Meta>The token is kept only in the sessionStorage of this tab and is gone when the tab closes.</Meta>
           </Card>
         </Narrow>
       </Page>
@@ -133,7 +133,7 @@ export default function AdminPage() {
     <Page>
       <Card>
         <Row>
-          <Heading>CSL 관리자</Heading>
+          <Heading>CSL Admin</Heading>
           <span style={{ flex: 1 }} />
           {TABS.map((t) => (
             <Button key={t.id} variant={tab === t.id ? "primary" : "ghost"} onClick={() => setTab(t.id)}>
@@ -141,12 +141,12 @@ export default function AdminPage() {
             </Button>
           ))}
           <Button variant="ghost" onClick={signOut}>
-            나가기
+            Sign out
           </Button>
         </Row>
         <Meta>
-          파이프라인 {config.pipeline} · 메인 {config.model || "(미설정)"} · 보조 {config.modelFast || "(메인과 동일)"}
-          {config.overridden ? " · 관리자 페이지에서 변경됨" : ""}
+          Pipeline {config.pipeline} · main {config.model || "(not set)"} · fast {config.modelFast || "(same as main)"}
+          {config.overridden ? " · overridden from the admin page" : ""}
         </Meta>
       </Card>
 

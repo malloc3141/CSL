@@ -38,7 +38,7 @@ Who owns what: turn allocation and learner participation are `select_speaker`; k
 ## What you can read
 
 ```python
-session.topic, session.language            # "ko" | "en"
+session.topic, session.language            # "en" (default) | "ko"
 session.focus                              # from build_classroom
 session.transcript                         # discussion messages, oldest first (agents and learner)
 session.init_transcript                    # the setup chat

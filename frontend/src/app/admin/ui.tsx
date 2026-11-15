@@ -175,7 +175,7 @@ export function price(value: number): string {
 }
 
 export function dateTime(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleString("ko-KR", {
+  return new Date(seconds * 1000).toLocaleString("en-US", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

@@ -1,8 +1,8 @@
 """Run one session in the terminal: no web server, no frontend.
 For trying a pipeline while developing it.
 
-    python scripts/cli.py "여름은 왜 겨울보다 더운가?"
-    python scripts/cli.py "Why is summer hotter than winter?" --lang en --pipeline baseline --auto
+    python scripts/cli.py "Why is summer hotter than winter?"
+    python scripts/cli.py "여름은 왜 겨울보다 더운가?" --lang ko --pipeline baseline --auto
     python scripts/cli.py "..." --pipeline mypkg.pipeline:MyPipeline
 
 While it runs:
@@ -77,7 +77,7 @@ async def printer(conn: Connection, names: dict[str, str]) -> None:
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("topic")
-    parser.add_argument("--lang", choices=["ko", "en"], default="ko")
+    parser.add_argument("--lang", choices=["ko", "en"], default="en")
     parser.add_argument("--pipeline", help="mock | baseline | module:Class (default: PIPELINE from .env)")
     parser.add_argument("--auto", action="store_true", help="run by itself instead of step by step")
     args = parser.parse_args()

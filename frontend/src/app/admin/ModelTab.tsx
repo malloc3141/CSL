@@ -10,12 +10,12 @@ function PriceLine({ id, models }: { id: string; models: Map<string, ModelInfo> 
   if (!id) return null;
   const info = models.get(id);
   if (!info) {
-    return models.size ? <ErrorText>OpenRouter 모델 목록에 없는 ID입니다.</ErrorText> : null;
+    return models.size ? <ErrorText>Not in the OpenRouter model list.</ErrorText> : null;
   }
   return (
     <Meta>
-      {info.name} · 100만 토큰당 입력 {price(info.promptPrice)} / 출력 {price(info.completionPrice)}
-      {info.contextLength ? ` · 컨텍스트 ${info.contextLength.toLocaleString("en-US")}` : ""}
+      {info.name} · per 1M tokens: input {price(info.promptPrice)} / output {price(info.completionPrice)}
+      {info.contextLength ? ` · context ${info.contextLength.toLocaleString("en-US")}` : ""}
     </Meta>
   );
 }
@@ -59,7 +59,7 @@ export function ModelTab({
       onChange(next);
       setModel(next.model);
       setModelFast(next.modelFast);
-      setResult({ ok: true, text: "저장했습니다. 다음 LLM 호출부터 새 모델을 씁니다 (진행 중인 호출은 그대로)." });
+      setResult({ ok: true, text: "Saved. The next LLM call uses the new model (calls in flight are not affected)." });
     } catch (cause) {
       setResult({ ok: false, text: errorMessage(cause) });
     } finally {
@@ -72,16 +72,16 @@ export function ModelTab({
   return (
     <>
       <Card>
-        <Heading>사용 중인 모델</Heading>
+        <Heading>Models in use</Heading>
         {config.pipeline !== "baseline" ? (
           <Notice>
-            현재 파이프라인은 <b>{config.pipeline}</b>입니다.
+            The current pipeline is <b>{config.pipeline}</b>.
             {config.pipeline === "mock"
-              ? " mock은 LLM을 호출하지 않으므로 여기서 바꾼 모델이 쓰이지 않습니다. backend/.env의 PIPELINE을 바꾸고 재시작해야 합니다."
-              : " 이 파이프라인이 app/llm.py의 get_llm()을 쓰는 경우에만 아래 설정이 적용됩니다."}
+              ? " The mock pipeline makes no LLM calls, so the models set here are not used. Change PIPELINE in backend/.env and restart the backend."
+              : " The settings below apply only if this pipeline uses get_llm() from app/llm.py."}
           </Notice>
         ) : null}
-        {!config.apiKeySet ? <Notice>서버에 OPENROUTER_API_KEY가 설정되어 있지 않습니다.</Notice> : null}
+        {!config.apiKeySet ? <Notice>OPENROUTER_API_KEY is not set on the server.</Notice> : null}
 
         <datalist id="openrouter-models">
           {models.map((m) => (
@@ -92,71 +92,71 @@ export function ModelTab({
         </datalist>
 
         <Label htmlFor="model">
-          메인 모델 (발언 생성)
+          Main model (writes the messages)
           <Input
             id="model"
             list="openrouter-models"
             value={model}
             onChange={(event) => setModel(event.target.value)}
-            placeholder={config.defaultModel || "예: anthropic/claude-sonnet-5.5"}
+            placeholder={config.defaultModel || "e.g. anthropic/claude-sonnet-5.5"}
             autoComplete="off"
             spellCheck={false}
           />
         </Label>
         <PriceLine id={model.trim()} models={byId} />
-        <Meta>.env 기본값: {config.defaultModel || "(없음)"} · 비우고 저장하면 기본값으로 돌아갑니다.</Meta>
+        <Meta>.env default: {config.defaultModel || "(none)"} · Save it empty to go back to the default.</Meta>
 
         <Label htmlFor="model-fast">
-          보조 모델 (발언자 선택, 지식 상태 업데이트)
+          Fast model (picks the speaker, updates knowledge states)
           <Input
             id="model-fast"
             list="openrouter-models"
             value={modelFast}
             onChange={(event) => setModelFast(event.target.value)}
-            placeholder={config.defaultModelFast || "비우면 메인 모델 사용"}
+            placeholder={config.defaultModelFast || "Empty = use the main model"}
             autoComplete="off"
             spellCheck={false}
           />
         </Label>
         <PriceLine id={modelFast.trim()} models={byId} />
         <Meta>
-          .env 기본값: {config.defaultModelFast || "(없음: 메인 모델 사용)"}
-          {!modelFast.trim() && !config.defaultModelFast ? " · 지금은 보조 호출도 메인 모델로 나갑니다." : ""}
+          .env default: {config.defaultModelFast || "(none: uses the main model)"}
+          {!modelFast.trim() && !config.defaultModelFast ? " · Fast calls currently go to the main model." : ""}
         </Meta>
 
         <Row>
           <Button onClick={() => save({ model: model.trim(), modelFast: modelFast.trim() })} disabled={saving || !changed}>
-            {saving ? "저장 중…" : "저장"}
+            {saving ? "Saving…" : "Save"}
           </Button>
           <Button
             variant="ghost"
             onClick={() => save({ model: "", modelFast: "" })}
             disabled={saving || !config.overridden}
           >
-            .env 값으로 되돌리기
+            Reset to .env
           </Button>
-          <Meta>{config.overridden ? "관리자 페이지에서 바꾼 값이 적용 중입니다 (재시작해도 유지)." : ".env 값 사용 중"}</Meta>
+          <Meta>{config.overridden ? "Override from the admin page is active (kept across restarts)." : "Using the .env values"}</Meta>
         </Row>
         {result ? <Notice $tone={result.ok ? "ok" : "warn"}>{result.text}</Notice> : null}
       </Card>
 
       <Card>
-        <Heading>OpenRouter 모델 찾기</Heading>
-        {listError ? <ErrorText>모델 목록을 불러오지 못했습니다: {listError}</ErrorText> : null}
+        <Heading>Find an OpenRouter model</Heading>
+        {listError ? <ErrorText>Could not load the model list: {listError}</ErrorText> : null}
         <Input
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
-          placeholder="검색어 (예: claude haiku, gpt luna, gemini flash)"
-          aria-label="모델 검색"
+          placeholder="Search (e.g. claude haiku, gpt luna, gemini flash)"
+          aria-label="Search models"
         />
         {filtered.length ? (
           <TableWrap>
             <Table>
               <thead>
                 <tr>
-                  <th>모델</th>
-                  <th className="num">입력 /1M</th>
-                  <th className="num">출력 /1M</th>
+                  <th>Model</th>
+                  <th className="num">Input /1M</th>
+                  <th className="num">Output /1M</th>
                   <th />
                 </tr>
               </thead>
@@ -172,10 +172,10 @@ export function ModelTab({
                     <td>
                       <Row>
                         <Button variant="ghost" onClick={() => setModel(m.id)}>
-                          메인으로
+                          Use as main
                         </Button>
                         <Button variant="ghost" onClick={() => setModelFast(m.id)}>
-                          보조로
+                          Use as fast
                         </Button>
                       </Row>
                     </td>
@@ -185,7 +185,7 @@ export function ModelTab({
             </Table>
           </TableWrap>
         ) : (
-          <Meta>{models.length ? `${models.length}개 모델. 검색어를 입력하세요.` : "목록을 불러오는 중…"}</Meta>
+          <Meta>{models.length ? `${models.length} models. Type to search.` : "Loading the list…"}</Meta>
         )}
       </Card>
     </>

@@ -7,7 +7,7 @@ import { useState } from "react";
 import styled, { useTheme } from "styled-components";
 import { Button, Composer, MessageBubble, ProfileImage, TextField } from "@/common/components";
 import { createSession, useCslSession } from "@/lib/csl";
-import type { Accuracy, Role, StateVersion } from "@/lib/csl";
+import type { Accuracy, Language, Role, StateVersion } from "@/lib/csl";
 import { peerColor } from "@/styles/peerColors";
 
 const Page = styled.main`
@@ -94,9 +94,9 @@ function StatePanel({ name, versions }: { name: string; versions: StateVersion[]
     <Card>
       <Heading>
         {name} · v{current.version}
-        {current.turnNumber ? ` (${current.turnNumber}턴에서 변경)` : ""}
+        {current.turnNumber ? ` (changed in turn ${current.turnNumber})` : ""}
       </Heading>
-      <Meta>현재 믿음</Meta>
+      <Meta>Current beliefs</Meta>
       <StateList>
         {state.beliefs.map((belief) => (
           <li key={belief.id}>
@@ -105,7 +105,7 @@ function StatePanel({ name, versions }: { name: string; versions: StateVersion[]
           </li>
         ))}
       </StateList>
-      <Meta>현재 설명</Meta>
+      <Meta>Current explanation</Meta>
       <StateList>
         <li>
           {mark(state.explanationAccuracy)}
@@ -114,7 +114,7 @@ function StatePanel({ name, versions }: { name: string; versions: StateVersion[]
       </StateList>
       {state.openQuestions.length > 0 ? (
         <>
-          <Meta>현재 의문</Meta>
+          <Meta>Open questions</Meta>
           <StateList>
             {state.openQuestions.map((question) => (
               <li key={question}>{question}</li>
@@ -127,7 +127,8 @@ function StatePanel({ name, versions }: { name: string; versions: StateVersion[]
 }
 
 export default function DevPage() {
-  const [topic, setTopic] = useState("여름은 왜 겨울보다 더운가?");
+  const [topic, setTopic] = useState("Why is summer hotter than winter?");
+  const [language, setLanguage] = useState<Language>("en");
   const [accessCode, setAccessCode] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -137,7 +138,7 @@ export default function DevPage() {
   const start = async () => {
     setCreateError(null);
     try {
-      const created = await createSession({ topic, language: "ko", accessCode: accessCode || null });
+      const created = await createSession({ topic, language, accessCode: accessCode || null });
       setSessionId(created.sessionId);
     } catch (cause) {
       setCreateError(cause instanceof Error ? cause.message : String(cause));
@@ -148,16 +149,27 @@ export default function DevPage() {
     return (
       <Page>
         <Card>
-          <Heading>백엔드 연동 확인</Heading>
-          <TextField id="topic" label="학습 주제" value={topic} onChange={setTopic} />
-          <TextField id="code" label="접근 코드 (서버에 설정한 경우)" value={accessCode} onChange={setAccessCode} />
+          <Heading>Backend connection check</Heading>
+          <TextField id="topic" label="Topic" value={topic} onChange={setTopic} />
+          <Row>
+            <Meta>Discussion language</Meta>
+            <select
+              value={language}
+              onChange={(event) => setLanguage(event.target.value as Language)}
+              aria-label="Discussion language"
+            >
+              <option value="en">English</option>
+              <option value="ko">Korean</option>
+            </select>
+          </Row>
+          <TextField id="code" label="Access code (if the server requires one)" value={accessCode} onChange={setAccessCode} />
           <Row>
             <Button onClick={start} disabled={!topic.trim() || Boolean(sessionId)}>
-              세션 시작
+              Start session
             </Button>
-            {sessionId ? <Meta>연결 중… ({connection})</Meta> : null}
+            {sessionId ? <Meta>Connecting… ({connection})</Meta> : null}
           </Row>
-          {createError ? <ErrorText>세션을 만들지 못했습니다: {createError}</ErrorText> : null}
+          {createError ? <ErrorText>Could not create the session: {createError}</ErrorText> : null}
         </Card>
       </Page>
     );
@@ -210,42 +222,42 @@ export default function DevPage() {
             role={activeTurn.role}
             speaker={activeTurn.speakerName}
             peerIndex={activeTurn.peerIndex}
-            text={activeTurn.text || "입력 중…"}
+            text={activeTurn.text || "Typing…"}
           />
         ) : null}
-        {phase === "building" ? <Meta>교실 구성 중…</Meta> : null}
-        {snapshot.invitedTurnId ? <Meta>Tutor가 설명을 기다리고 있습니다. (계속 = 넘어가기)</Meta> : null}
+        {phase === "building" ? <Meta>Building the classroom…</Meta> : null}
+        {snapshot.invitedTurnId ? <Meta>The tutor is waiting for your explanation. (Resume = skip)</Meta> : null}
 
         {canType ? (
           <Composer
             value={draft}
             onChange={setDraft}
             onSubmit={submit}
-            placeholder={phase === "init" ? "가이드에게 답하기…" : "대화에 참여해 보세요…"}
+            placeholder={phase === "init" ? "Reply to the guide…" : "Join the discussion…"}
           />
         ) : null}
 
         <Row>
           {phase === "init" ? (
             <Button variant="ghost" onClick={actions.finishInit}>
-              초기화 건너뛰기
+              Skip setup
             </Button>
           ) : null}
-          {phase === "ready" ? <Button onClick={actions.startDiscussion}>토론 시작</Button> : null}
+          {phase === "ready" ? <Button onClick={actions.startDiscussion}>Start discussion</Button> : null}
           {phase === "discussion" ? (
             <>
               {status === "running" ? (
                 <Button variant="ghost" onClick={actions.pause}>
-                  일시정지
+                  Pause
                 </Button>
               ) : (
-                <Button onClick={actions.resume}>계속</Button>
+                <Button onClick={actions.resume}>Resume</Button>
               )}
               <Button variant="ghost" onClick={actions.step}>
-                다음 발언
+                Next message
               </Button>
               <Button variant="ghost" onClick={() => actions.setPace({ auto: !pace.auto })}>
-                자동 진행: {pace.auto ? "켜짐" : "꺼짐"}
+                Auto advance: {pace.auto ? "on" : "off"}
               </Button>
               {[0.5, 1, 2].map((speed) => (
                 <Button
@@ -257,11 +269,11 @@ export default function DevPage() {
                 </Button>
               ))}
               <Button variant="ghost" onClick={actions.end}>
-                종료
+                End
               </Button>
             </>
           ) : null}
-          {phase === "building" && error ? <Button onClick={actions.resume}>다시 시도</Button> : null}
+          {phase === "building" && error ? <Button onClick={actions.resume}>Retry</Button> : null}
         </Row>
       </Card>
 

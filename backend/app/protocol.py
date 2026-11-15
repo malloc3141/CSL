@@ -276,7 +276,7 @@ CLIENT_COMMANDS: dict[str, type[Wire]] = {
 
 class CreateSessionRequest(Wire):
     topic: str = Field(min_length=1, max_length=300)
-    language: Language = "ko"
+    language: Language = "en"
     access_code: Optional[str] = None
 
 

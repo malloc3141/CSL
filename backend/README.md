@@ -34,7 +34,7 @@ uv sync --extra dev                         # or: pip install fastapi "uvicorn[s
 cp .env.example .env                        # PIPELINE=mock works without any key
 uv run uvicorn app.main:app --reload        # http://localhost:8000/api/health
 uv run pytest
-uv run python scripts/cli.py "여름은 왜 겨울보다 더운가?"
+uv run python scripts/cli.py "Why is summer hotter than winter?"
 ```
 
 To use real models set `PIPELINE=baseline`, `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env`.
@@ -66,16 +66,16 @@ The ones that matter in production:
   curl -H "Authorization: Bearer $ADMIN_TOKEN" https://<host>/api/admin/sessions/<id>/events
   ```
 * **Admin page.** `https://<host>/admin`, sign in with `ADMIN_TOKEN`. Tabs:
-  - *사용량*: the OpenRouter key's real spend and limit (`GET /api/v1/key`), plus calls, tokens, latency and
+  - *Usage*: the OpenRouter key's real spend and limit (`GET /api/v1/key`), plus calls, tokens, latency and
     cost from the `llm.call` events, by model and by day. `llm.call` carries the cost OpenRouter reports
     (`usage.cost`); calls without it are estimated from list prices (marked ≈). Streams cancelled by a
     learner interjection report no usage and are missing from the log figures, so the key spend is the
     number to trust.
-  - *모델*: switch `OPENROUTER_MODEL` / `OPENROUTER_MODEL_FAST` without a restart. The override is stored in
+  - *Models*: switch `OPENROUTER_MODEL` / `OPENROUTER_MODEL_FAST` without a restart. The override is stored in
     the `config` table of the SQLite database and survives restarts; empty fields fall back to `.env`. It
     applies from the next LLM call. Ids are checked against the OpenRouter model list. It does nothing while
     `PIPELINE=mock`.
-  - *대화 이력*: every stored session (cost per session), its setup chat and discussion, every knowledge-state
+  - *Sessions*: every stored session (cost per session), its setup chat and discussion, every knowledge-state
     version, the pipeline's `scratch`, and the raw event log (filter, JSON download). Viewing a session does
     not load it into memory.
 

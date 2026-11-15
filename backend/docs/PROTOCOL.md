@@ -8,7 +8,7 @@ run `python scripts/gen_ts.py`).
 ```tsx
 import { createSession, useCslSession } from "@/lib/csl";
 
-const { sessionId } = await createSession({ topic, language: "ko" });
+const { sessionId } = await createSession({ topic, language: "en" });
 const { snapshot, connection, error, actions } = useCslSession(sessionId);
 ```
 

@@ -30,11 +30,11 @@ async function adminFetch<T>(token: string, path: string, init?: RequestInit): P
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
     },
   });
-  if (response.status === 401) throw new AdminAuthError("관리자 토큰이 올바르지 않습니다.");
+  if (response.status === 401) throw new AdminAuthError("Wrong admin token.");
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     if (response.status === 404 && body?.detail === "Not Found") {
-      throw new AdminAuthError("서버에 ADMIN_TOKEN이 설정되어 있지 않아 관리자 API가 꺼져 있습니다.");
+      throw new AdminAuthError("The admin API is off: ADMIN_TOKEN is not set on the server.");
     }
     throw new Error(typeof body?.detail === "string" ? body.detail : `HTTP ${response.status}`);
   }

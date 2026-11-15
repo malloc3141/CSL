@@ -55,7 +55,7 @@ export function Composer({
   value,
   onChange,
   onSubmit,
-  placeholder = "대화에 참여해 보세요...",
+  placeholder = "Join the discussion...",
   disabled = false,
 }: ComposerProps) {
   return (
@@ -73,7 +73,7 @@ export function Composer({
         onChange={(event) => onChange(event.target.value)}
       />
       <Send type="submit" disabled={disabled || !value.trim()}>
-        전송
+        Send
       </Send>
     </Form>
   );
