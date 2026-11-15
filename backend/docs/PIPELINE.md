@@ -22,6 +22,11 @@ class MyPipeline:
 
 `app/pipeline/baseline.py` is a complete example on OpenRouter; `mock.py` is one without an LLM.
 
+The module is imported with `backend/` as the working directory: put the code under `backend/` (for
+example `backend/app/pipeline/mine.py` → `PIPELINE=app.pipeline.mine:MyPipeline`). One pipeline serves
+every session and is loaded at startup, so a new `PIPELINE` value needs a restart. Extra Python
+packages go in `backend/pyproject.toml` (`dependencies`); the deploy runs `uv sync`.
+
 ## When each method is called
 
 | Method | Called | Returns |
@@ -69,7 +74,11 @@ A `Message` has `role` (`tutor` / `peer` / `user`), `speaker_id`, `speaker_name`
    stable `id`, `text`, optional `accuracy`), `explanation`, `explanation_accuracy`, `open_questions`.
    Keep a belief's `id` when it survives an update so the panel can show it as unchanged.
 6. **Failures.** Raise `PipelineError("...")` (or let an exception escape): the discussion pauses, the
-   learner sees an error and can retry. Each call has `TURN_TIMEOUT_SECONDS` (90 s).
+   learner sees an error and can retry. Each call has `TURN_TIMEOUT_SECONDS` (90 s). `speak` and
+   `init_turn` must write some text; an empty utterance counts as a failure.
+   `update_states` is the exception: if it fails, the error is only logged (`server.error` in the event
+   log), the states stay as they were and the discussion goes on. The next turn waits for
+   `update_states` to finish, so keep it fast.
 
 ## LLM calls
 

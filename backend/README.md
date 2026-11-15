@@ -15,6 +15,9 @@ browser ── REST + WebSocket ──> FastAPI (one process)
 | --- | --- |
 | `app/protocol.py` | Every message on the wire (Pydantic). Source of the frontend's TypeScript types. |
 | `app/orchestrator.py` | Session state machine: turn loop, reading-pace gate, prefetch, learner interruption, pause/resume, error recovery, restore after restart. |
+| `app/session.py` | In-memory state of one session, the snapshot sent to clients, dump/restore. What a pipeline reads. |
+| `app/store.py` | SQLite: append-only event log, latest snapshot per session, `config` table. |
+| `app/config.py` | Every setting, with its default. |
 | `app/main.py` | REST + WebSocket endpoints, access code, rate limit. |
 | `app/admin.py` | Admin API for the frontend's `/admin` page: usage and cost, runtime model switch, session history, event export. |
 | `app/openrouter.py` | OpenRouter model list (prices) and key spend, for the admin page. |
@@ -24,6 +27,7 @@ browser ── REST + WebSocket ──> FastAPI (one process)
 | `app/llm.py` | OpenRouter client: streaming, JSON calls, retries, per-call usage and cost log, runtime model override. |
 | `scripts/cli.py` | Run a session in the terminal, without server or frontend. |
 | `scripts/gen_ts.py` | Regenerate `frontend/src/lib/csl/protocol.ts` after changing `protocol.py`. |
+| `tests/` | 26 tests, no network: orchestrator, REST/WebSocket, baseline and LLM client with fakes, admin API, per-session pipeline. |
 
 ## Run
 
@@ -39,6 +43,8 @@ uv run python scripts/cli.py "Why is summer hotter than winter?"
 
 To use real models set `PIPELINE=baseline`, `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env`.
 To use your own pipeline set `PIPELINE=your.module:YourPipeline` (see [docs/PIPELINE.md](docs/PIPELINE.md)).
+The module is imported with `backend/` as the working directory, so `backend/app/pipeline/mine.py` is
+`PIPELINE=app.pipeline.mine:MyPipeline`. The pipeline is loaded once at startup; changing it needs a restart.
 Whatever `PIPELINE` is, a single session can still ask for the scripted mock (`POST /api/sessions` with
 `"pipeline": "mock"`, or "Mock" on `/dev`), so frontend work never needs the real agents. The choice is
 stored with the session and kept when it is restored after a restart.
@@ -48,12 +54,17 @@ The ones that matter in production:
 
 | Variable | Meaning |
 | --- | --- |
+| `PIPELINE` | `mock` (default), `baseline` or `module:Class`. |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_MODEL_FAST` | Needed unless `PIPELINE=mock`. The fast model is used for calls made with `fast=True` and falls back to the main one. Both ids can be switched from the admin page without a restart. |
+| `PEER_COUNT` | Number of peers the baseline pipeline creates (default 2). |
 | `CORS_ORIGINS` | Origins allowed to call the API and open the WebSocket. |
 | `ACCESS_CODE` | If set, creating a session needs this code. Protects the API budget on a public URL. Sessions created with `pipeline: "mock"` are exempt (they cost nothing). |
 | `ADMIN_TOKEN` | If set, enables the admin API and the `/admin` page (below). Off (404) when empty. |
 | `LLM_REASONING` | `off` (default), `low`, `medium`, `high` or `default`. Models such as claude-haiku-5.5 "think" on their own and the thinking tokens count against `max_tokens`, so short replies can come back empty (`init_turn wrote no text`). `off` turns thinking off; a model that rejects that gets the call again without the field. |
 | `MAX_TURNS`, `MAX_ACTIVE_SESSIONS`, `SESSIONS_PER_IP_PER_HOUR` | Cost guards. |
+| `TURN_TIMEOUT_SECONDS` | Limit for one pipeline call (default 90). |
 | `PACE_BASE_SECONDS`, `PACE_SECONDS_PER_CHAR`, `PACE_MAX_SECONDS` | Reading gap between two agent messages. |
+| `DEBUG` | `true` sends exception details to the client in `error` events. Keep it off in production; details always go to the log. |
 
 ## Things to know
 
