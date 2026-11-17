@@ -1,6 +1,7 @@
 "use client";
 
 import styled from "styled-components";
+import { SendHorizontal } from "lucide-react";
 
 const Form = styled.form`
   display: flex;
@@ -24,6 +25,12 @@ const Input = styled.input`
 `;
 
 const Send = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: ${({ theme }) => theme.round.sm};
   background: ${({ theme }) => theme.colors.SLATE[600]};
@@ -32,6 +39,11 @@ const Send = styled.button`
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.SLATE[600]};
+    outline-offset: 2px;
+  }
 
   &:disabled {
     cursor: not-allowed;
@@ -72,8 +84,8 @@ export function Composer({
         aria-label={placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
-      <Send type="submit" disabled={disabled || !value.trim()}>
-        Send
+      <Send type="submit" aria-label="Send message" title="Send message" disabled={disabled || !value.trim()}>
+        <SendHorizontal size={20} aria-hidden="true" />
       </Send>
     </Form>
   );
