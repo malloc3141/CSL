@@ -262,3 +262,13 @@ async def test_name_prefix_is_stripped_only_at_the_start(moderator, chunks, expe
     out = Sink()
     await discussion.speak(s, discussion.SpeakerDecision(agent_id="peer1"), out)
     assert out.text == expected and fake.streamed
+
+
+async def test_students_get_two_turns_after_the_tutor(moderator):
+    moderator({"speaker": "tutor", "respond_to": 8})
+    d = await discussion.select_speaker(make_session(ROTATION + ["tutor", "peer1"]))
+    assert d.agent_id == "peer2" and d.meta == {"respondTo": 8}  # one peer since the tutor: a peer again
+    d = await discussion.select_speaker(make_session(ROTATION + ["tutor", "peer1", "peer2"]))
+    assert d.agent_id == "tutor"
+    moderator({"speaker": "peer1", "stalled": True})
+    assert (await discussion.select_speaker(make_session(ROTATION))).meta == {"unstick": True}

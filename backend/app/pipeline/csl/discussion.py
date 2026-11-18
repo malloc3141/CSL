@@ -87,6 +87,10 @@ INVITE_GAP = 8
 WRAP_UP_MIN_TURN = 16
 # The tutor does not step in to unstick twice within this many messages.
 UNSTICK_GAP = 4
+# After the tutor speaks, this many peer messages come before the moderator may pick the tutor again
+# (the pilot's rule; on the live server the tutor otherwise took every other turn). The learner rules
+# (feedback / answer) and closing are exempt.
+PEERS_BETWEEN_TUTOR = 2
 
 
 # ---------------------------------------------------------------- helpers
@@ -295,6 +299,8 @@ async def select_speaker(session: Session) -> SpeakerDecision:
     speaker = data.get("speaker")
     if session.participant(speaker or "") is None or speaker == last.speaker_id:
         speaker = rotate(session, last.speaker_id)
+    if speaker == "tutor" and _peers_since_tutor(transcript) < PEERS_BETWEEN_TUTOR:
+        speaker = rotate(session, last.speaker_id)  # give the students room first
     invite = _flag(data.get("invite_user")) and can_invite and speaker == "tutor"
 
     directive: Optional[str] = "invite" if invite else None
@@ -303,10 +309,22 @@ async def select_speaker(session: Session) -> SpeakerDecision:
         speaker, directive = "tutor", "unstick"
 
     meta: dict[str, Any] = {"invite": True} if invite else {}
+    if directive == "unstick":
+        meta["unstick"] = True  # visible in the event log and to the frontend
     target = _by_turn(session, data.get("respond_to"))
     if target is not None and target.speaker_id != speaker and directive != "unstick":
         meta["respondTo"] = target.turn_number
     return SpeakerDecision(agent_id=speaker, invite_user=invite, directive=directive, meta=meta)
+
+
+def _peers_since_tutor(transcript: list[Message]) -> int:
+    """Peer messages since the tutor last spoke (all of them if the tutor never did)."""
+    count = 0
+    for m in reversed(transcript):
+        if m.role == "tutor":
+            return count
+        count += m.role == "peer"
+    return count
 
 
 async def speak(session: Session, decision: SpeakerDecision, out: TextSink) -> None:
