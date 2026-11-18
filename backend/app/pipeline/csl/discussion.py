@@ -88,7 +88,7 @@ Write only your next message: 2-4 sentences, in the discussion language, no list
 
 TUTOR_DIRECTIVES = {
     "open": "Open the discussion with one focused question about the focus.",
-    "invite": "The students are close. Say in one sentence what they have worked out, then ask the learner to explain the missing connection to them. Add that a complete or correct answer is not expected.",
+    "invite": "The students are close. Say in one sentence what they have worked out, without explaining the missing connection yourself. Then turn to the learner who has been watching and ask them to explain that connection to the students. The question is for the learner only: do not name or address any student in it, and make it clear that you are now asking the one who has been listening (in Korean, e.g. \"지금까지 들으신 걸 바탕으로 직접 설명해 주실래요?\"). Add that a complete or correct answer is not expected.",
     "feedback": "The learner has just explained their understanding. Say specifically which part is right, and which connection is missing or wrong and why, without supplying the full answer. Then invite them to refine it or let the students pick it up.",
     "answer": "The learner has just said something. If it is a question, answer it briefly and accurately and hand back to the students. If they want to move on or change direction, steer the discussion that way.",
     "refocus": "The discussion has drifted from the focus. In one sentence connect what was just said back to the focus, then ask one concrete question that brings the students back to it, addressed to one student by name.",
