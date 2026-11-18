@@ -3,8 +3,13 @@
 Turn allocation follows the pilot's choice (researches/turn_allocation: centralized selection, S03): a
 hidden moderator picks the next speaker from the public discussion. The pilot's weakness of S03 was that
 questions went unanswered, so the moderator also names the open question the chosen speaker should take
-up (`respond_to`), says when the discussion is going in circles (`stalled`) and when it has done its job
-(`wrap_up`). It still only points; it never says what anyone should believe or answer.
+up (`respond_to`) and says when it has done its job (`wrap_up`). It still only points; it never says
+what anyone should believe or answer.
+
+The tutor is not a speaker candidate, as in the pilot: the moderator picks among the students and,
+separately, judges whether the tutor has a reason to step in (`tutor`: off_topic / stagnation /
+missing_information, or none). A wrong answer, a productive disagreement or a question the students have
+not had a chance to answer is not a reason. PEERS_BETWEEN_TUTOR is only a lower bound, not a trigger.
 
 All of this is read fresh from the full transcript on every call, so nothing has to be stored between
 turns: neither method may change anything (base.py), because the server may throw a prepared turn away.
@@ -35,21 +40,26 @@ MODERATOR_ROLE = """ROLE: hidden moderator. You only decide who speaks next; nob
 
 Key points the discussion should eventually reach (do not reveal them): {key_points}
 
-How to choose:
-- Peers carry the discussion: they question and build on each other. If the last message asked a specific participant something, pick that participant.
-- Keep track of questions. A question is open until someone has actually answered it with a reason (agreeing, repeating it or saying "good question" is not an answer). Prefer giving the turn to the participant an open question was addressed to, or to a student who can take up an open question nobody was asked by name.
+1. speaker: the student who speaks next (never the tutor, never the one who spoke last).
+- Students carry the discussion: they question and build on each other. If the last message asked a specific student something, pick that student.
+- Keep track of questions. A question is open until someone has actually answered it with a reason (agreeing, repeating it or saying "good question" is not an answer). Prefer the student an open question was addressed to, or one who can take up an open question nobody was asked by name.
 - Prefer a student whose view has not been examined yet over one who just repeated themselves.
-- Pick the tutor only when a question was left unanswered for several turns, the students are reinforcing a wrong idea together, two conflicting explanations are not being examined, or the discussion is going in circles.
-- Never pick the participant who spoke last.
-- invite_user may be true only together with the tutor: the students have reached the edge of a key idea but cannot make the connection, so the tutor will ask the learner to explain it. The instruction below says whether an invitation is allowed right now.
 
-Also report:
-- respond_to: the turn number of the open question the chosen speaker should answer first, or null. Only a question that was addressed to that speaker or to everyone, and that has not been answered yet.
-- stalled: true if the last several messages mostly repeat the same point or the same question without new reasons.
-- wrap_up: true only if the students have between them reached the key points and the learner has had a chance to explain, so the tutor can close the discussion.
+2. respond_to: the turn number of the open question that student should answer first, or null. Only a question addressed to that student or to everyone, not yet answered, and not already taken up by someone else.
+
+3. tutor: whether the tutor, who is watching, should step in now instead. Usually "none": the tutor is a supporter, not a competitor for turns.
+- "off_topic": the discussion has drifted away from the focus.
+- "stagnation": for several turns the students have repeated the same point or question without new reasons.
+- "missing_information": the students need a fact they cannot work out from what they know or what was said.
+- Not a reason on its own: the last answer was wrong, the students disagree productively, or a question has not yet had a chance to be answered by the students. Let them work.
+- The instruction below says whether the tutor may step in right now; if not, tutor must be "none".
+
+4. invite_user: true only if the students have reached the edge of a key idea but cannot make the connection, so the tutor will ask the learner to explain it. The instruction below says whether an invitation is allowed right now.
+
+5. wrap_up: true only if the students have between them reached the key points and the learner has had a chance to explain, so the tutor can close the discussion.
 
 Output a single JSON object and nothing else:
-{{"speaker": "<participant id>", "respond_to": <turn number or null>, "stalled": true|false, "wrap_up": true|false, "invite_user": true|false}}"""
+{{"speaker": "<student id>", "respond_to": <turn number or null>, "tutor": "none"|"off_topic"|"stagnation"|"missing_information", "invite_user": true|false, "wrap_up": true|false}}"""
 
 PEER_ROLE = """ROLE: one of the students. The instruction after the discussion says which student you are and gives that student's current understanding.
 
@@ -74,6 +84,8 @@ TUTOR_DIRECTIVES = {
     "invite": "The students are close. Say in one sentence what they have worked out, then ask the learner to explain the missing connection to them. Add that a complete or correct answer is not expected.",
     "feedback": "The learner has just explained their understanding. Say specifically which part is right, and which connection is missing or wrong and why, without supplying the full answer. Then invite them to refine it or let the students pick it up.",
     "answer": "The learner has just said something. If it is a question, answer it briefly and accurately and hand back to the students. If they want to move on or change direction, steer the discussion that way.",
+    "refocus": "The discussion has drifted from the focus. In one sentence connect what was just said back to the focus, then ask one concrete question that brings the students back to it, addressed to one student by name.",
+    "inform": "The students need a fact they cannot work out themselves. Give exactly that one fact or clue, as briefly as possible and without explaining what follows from it, then ask one student by name what it changes in their thinking.",
     "unstick": "The discussion is going in circles. Name the point the students keep returning to in one short phrase, then move them forward with one new fact or a small thought experiment that bears on exactly that point, or turn them to a key point nobody has examined yet. End with a question to one student by name.",
     "close": "Close the discussion. In 2-3 sentences, say what the students worked out together, and leave the learner one open question worth thinking about on their own. Do not recite the full explanation. Thank everyone in a few words.",
 }
@@ -85,12 +97,12 @@ INVITE_MIN_TURN = 6
 INVITE_GAP = 8
 # The moderator may ask to close only after this many discussion messages.
 WRAP_UP_MIN_TURN = 16
-# The tutor does not step in to unstick twice within this many messages.
-UNSTICK_GAP = 4
-# After the tutor speaks, this many peer messages come before the moderator may pick the tutor again
-# (the pilot's rule; on the live server the tutor otherwise took every other turn). The learner rules
-# (feedback / answer) and closing are exempt.
+# After the tutor speaks, at least this many student messages come before the tutor may step in again
+# (the pilot's rule). A lower bound only: whether the tutor steps in is the moderator's judgment.
+# The learner rules (feedback / answer) and closing are exempt.
 PEERS_BETWEEN_TUTOR = 2
+# The moderator's reasons for the tutor to step in, and the tutor's instruction for each.
+INTERVENTIONS = {"off_topic": "refocus", "stagnation": "unstick", "missing_information": "inform"}
 
 
 # ---------------------------------------------------------------- helpers
@@ -145,12 +157,13 @@ def _flag(value: Any) -> bool:
 
 # ---------------------------------------------------------------- requests (pure: also used by tests)
 
-def moderator_request(session: Session, can_invite: bool) -> list[dict[str, Any]]:
+def moderator_request(session: Session, can_invite: bool, tutor_allowed: bool = True) -> list[dict[str, Any]]:
     transcript = session.transcript
     counts = {p.id: sum(1 for m in transcript if m.speaker_id == p.id) for p in session.participants}
     tail = (
         f"Messages so far per participant: {json.dumps(counts, ensure_ascii=False)}\n"
         f"Last speaker (cannot be picked): {transcript[-1].speaker_id if transcript else 'none'}\n"
+        f"Tutor may step in now: {'yes' if tutor_allowed else 'no, tutor must be none'}\n"
         f"Invitation allowed now: {'yes' if can_invite else 'no, invite_user must be false'}\n"
         f"Closing allowed now: {'yes' if len(transcript) >= WRAP_UP_MIN_TURN else 'no, wrap_up must be false'}\n"
         "Who speaks next? Output the JSON object only."
@@ -281,13 +294,14 @@ async def select_speaker(session: Session) -> SpeakerDecision:
         # One message left before the server stops the session: let the tutor close it properly.
         return SpeakerDecision(agent_id="tutor", directive="close", meta={"closing": True})
 
-    can_invite = turn >= INVITE_MIN_TURN and turn - last_invite(session) >= INVITE_GAP
+    tutor_allowed = _peers_since_tutor(transcript) >= PEERS_BETWEEN_TUTOR
+    can_invite = tutor_allowed and turn >= INVITE_MIN_TURN and turn - last_invite(session) >= INVITE_GAP
     data: dict[str, Any] = {}
     try:
         # Plain completion + our own JSON parsing, so the request has the same shape as every other call
         # (a response_format field could change how the provider renders the prompt).
         text = await get_llm().complete(
-            moderator_request(session, can_invite), fast=True, temperature=0.2, max_tokens=150
+            moderator_request(session, can_invite, tutor_allowed), fast=True, temperature=0.2, max_tokens=150
         )
         data = extract_json(text)
     except Exception as exc:  # the discussion must go on; rotate instead
@@ -297,25 +311,25 @@ async def select_speaker(session: Session) -> SpeakerDecision:
         return SpeakerDecision(agent_id="tutor", directive="close", meta={"closing": True})
 
     speaker = data.get("speaker")
-    if session.participant(speaker or "") is None or speaker == last.speaker_id:
+    agent = session.participant(speaker or "")
+    if agent is None or agent.role != "peer" or speaker == last.speaker_id:
         speaker = rotate(session, last.speaker_id)
-    if speaker == "tutor" and _peers_since_tutor(transcript) < PEERS_BETWEEN_TUTOR:
-        speaker = rotate(session, last.speaker_id)  # give the students room first
-    invite = _flag(data.get("invite_user")) and can_invite and speaker == "tutor"
 
-    directive: Optional[str] = "invite" if invite else None
-    tutor_recently = any(m.role == "tutor" for m in transcript[-UNSTICK_GAP:])
-    if not invite and _flag(data.get("stalled")) and not tutor_recently:
-        speaker, directive = "tutor", "unstick"
+    invite = _flag(data.get("invite_user")) and can_invite
+    reason = data.get("tutor") if tutor_allowed else None
+    directive: Optional[str] = None
+    meta: dict[str, Any] = {}
+    if invite:
+        speaker, directive, meta = "tutor", "invite", {"invite": True}
+    elif reason in INTERVENTIONS:
+        speaker, directive = "tutor", INTERVENTIONS[reason]
+        meta["intervention"] = reason  # visible in the event log: why the tutor stepped in
 
-    meta: dict[str, Any] = {"invite": True} if invite else {}
-    if directive == "unstick":
-        meta["unstick"] = True  # visible in the event log and to the frontend
     target = _by_turn(session, data.get("respond_to"))
     if (
         target is not None
         and target.speaker_id != speaker
-        and directive != "unstick"
+        and directive in (None, "invite")
         and not _already_taken_up(transcript, target.turn_number)
     ):
         meta["respondTo"] = target.turn_number

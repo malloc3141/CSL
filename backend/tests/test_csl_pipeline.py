@@ -198,7 +198,7 @@ ROTATION = ["tutor", "peer1", "peer2", "peer1", "peer2", "peer1", "peer2"]
 
 async def test_moderator_points_the_speaker_at_an_open_question(moderator):
     s = make_session(ROTATION)  # T5 is Priya's (peer2) question, T6 Marcus's
-    moderator({"speaker": "peer1", "respond_to": 5, "stalled": False, "wrap_up": False, "invite_user": False})
+    moderator({"speaker": "peer1", "respond_to": 5, "tutor": "none", "wrap_up": False, "invite_user": False})
     d = await discussion.select_speaker(s)
     assert d.agent_id == "peer1" and d.meta == {"respondTo": 5}
     tail = discussion.speak_request(s, d)[1]["content"][-1]["text"]
@@ -216,13 +216,24 @@ async def test_moderator_points_the_speaker_at_an_open_question(moderator):
     assert (await discussion.select_speaker(s)).meta == {}
 
 
-async def test_stalled_discussion_brings_in_the_tutor_once(moderator):
-    moderator({"speaker": "peer1", "stalled": True})
+async def test_tutor_steps_in_only_with_a_reason(moderator):
+    # Two students since the tutor, but the moderator sees no reason: the students keep going.
+    moderator({"speaker": "peer1", "tutor": "none"})
     d = await discussion.select_speaker(make_session(ROTATION))
-    assert (d.agent_id, d.directive) == ("tutor", "unstick")
-    # The tutor spoke within the last UNSTICK_GAP messages: no second rescue, the moderator's pick stands.
-    d = await discussion.select_speaker(make_session(ROTATION + ["tutor", "peer2"]))
     assert (d.agent_id, d.directive) == ("peer1", None)
+    # Picking the tutor as a speaker is not how the tutor gets in.
+    moderator({"speaker": "tutor"})
+    assert (await discussion.select_speaker(make_session(ROTATION))).agent_id in ("peer1", "peer2")
+
+
+@pytest.mark.parametrize("reason, directive", [
+    ("stagnation", "unstick"), ("off_topic", "refocus"), ("missing_information", "inform"),
+])
+async def test_each_reason_gives_the_tutor_its_instruction(moderator, reason, directive):
+    moderator({"speaker": "peer1", "tutor": reason, "respond_to": 5})
+    d = await discussion.select_speaker(make_session(ROTATION))
+    assert (d.agent_id, d.directive, d.meta) == ("tutor", directive, {"intervention": reason})
+    assert discussion.TUTOR_DIRECTIVES[directive] in discussion.speak_request(make_session(ROTATION), d)[1]["content"][-1]["text"]
 
 
 async def test_wrap_up_then_end(moderator):
@@ -270,10 +281,11 @@ async def test_name_prefix_is_stripped_only_at_the_start(moderator, chunks, expe
 
 
 async def test_students_get_two_turns_after_the_tutor(moderator):
-    moderator({"speaker": "tutor", "respond_to": 8})
-    d = await discussion.select_speaker(make_session(ROTATION + ["tutor", "peer1"]))
-    assert d.agent_id == "peer2" and d.meta == {"respondTo": 8}  # one peer since the tutor: a peer again
+    # One student since the tutor: a reason to step in is not enough yet, and the request says so.
+    moderator({"speaker": "peer2", "tutor": "stagnation", "respond_to": 8, "invite_user": True})
+    s = make_session(ROTATION + ["tutor", "peer1"])
+    d = await discussion.select_speaker(s)
+    assert d.agent_id == "peer2" and d.meta == {"respondTo": 8} and not d.invite_user
+    assert "Tutor may step in now: no" in discussion.moderator_request(s, False, False)[1]["content"][-1]["text"]
     d = await discussion.select_speaker(make_session(ROTATION + ["tutor", "peer1", "peer2"]))
-    assert d.agent_id == "tutor"
-    moderator({"speaker": "peer1", "stalled": True})
-    assert (await discussion.select_speaker(make_session(ROTATION))).meta == {"unstick": True}
+    assert d.agent_id == "tutor" and d.directive == "invite"  # an invitation outranks the intervention
