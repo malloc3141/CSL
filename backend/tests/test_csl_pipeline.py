@@ -144,3 +144,121 @@ def test_breakpoints_stay_within_limit_and_on_stable_positions():
     short = build_messages("S", "R", [_msg(1), _msg(2)], "ko", "a")[1]["content"]
     long = build_messages("S", "R", [_msg(1), _msg(2), _msg(3)], "ko", "b")[1]["content"]
     assert short[0]["text"] == long[0]["text"] == "[T1] 민준: 발언 1"
+
+
+# ---------------------------------------------------------------- discussion rules on a hand-built session
+
+from app.pipeline.csl import discussion  # noqa: E402
+from app.protocol import Participant  # noqa: E402
+from app.session import Session  # noqa: E402
+
+SPEAKERS = {"tutor": ("tutor", "Tutor"), "peer1": ("peer", "Marcus"), "peer2": ("peer", "Priya"), "user": ("user", "You")}
+
+
+def make_session(speakers: list[str], turn_limit: int = 60, closing_last: bool = False) -> Session:
+    s = Session("s1", "Why is summer hotter?", "en", turn_limit)
+    s.participants = [
+        Participant(id="tutor", role="tutor", name="Tutor"),
+        Participant(id="peer1", role="peer", name="Marcus", peer_index=0),
+        Participant(id="peer2", role="peer", name="Priya", peer_index=1),
+    ]
+    for i, sid in enumerate(speakers, start=1):
+        role, name = SPEAKERS[sid]
+        meta = {"closing": True} if closing_last and i == len(speakers) else {}
+        s.messages.append(Message(id=f"m{i}", channel="discussion", role=role, speaker_id=sid, speaker_name=name,
+                                  text=f"message {i}?", turn_number=i, meta=meta, created_at=0.0))
+    return s
+
+
+class ModeratorLLM:
+    def __init__(self, reply: dict):
+        self.reply = reply
+        self.streamed: list = []
+
+    async def complete(self, messages, **kwargs):
+        return json.dumps(self.reply)
+
+    async def stream(self, messages, **kwargs):
+        self.streamed.append(messages)
+        for chunk in self.reply.get("chunks", ["ok"]):
+            yield chunk
+
+
+@pytest.fixture
+def moderator(monkeypatch):
+    def install(reply: dict) -> ModeratorLLM:
+        fake = ModeratorLLM(reply)
+        monkeypatch.setattr(llm_module, "_llm", fake)
+        return fake
+    return install
+
+
+ROTATION = ["tutor", "peer1", "peer2", "peer1", "peer2", "peer1", "peer2"]
+
+
+async def test_moderator_points_the_speaker_at_an_open_question(moderator):
+    s = make_session(ROTATION)  # T5 is Priya's (peer2) question, T6 Marcus's
+    moderator({"speaker": "peer1", "respond_to": 5, "stalled": False, "wrap_up": False, "invite_user": False})
+    d = await discussion.select_speaker(s)
+    assert d.agent_id == "peer1" and d.meta == {"respondTo": 5}
+    tail = discussion.speak_request(s, d)[1]["content"][-1]["text"]
+    assert "[T5] from Priya" in tail and tail.startswith("You are Marcus")
+
+    # Nobody is told to answer their own question, and a made-up turn number is ignored.
+    moderator({"speaker": "peer1", "respond_to": 6})
+    assert (await discussion.select_speaker(s)).meta == {}
+    moderator({"speaker": "peer1", "respond_to": 99})
+    assert (await discussion.select_speaker(s)).meta == {}
+
+
+async def test_stalled_discussion_brings_in_the_tutor_once(moderator):
+    moderator({"speaker": "peer1", "stalled": True})
+    d = await discussion.select_speaker(make_session(ROTATION))
+    assert (d.agent_id, d.directive) == ("tutor", "unstick")
+    # The tutor spoke within the last UNSTICK_GAP messages: no second rescue, the moderator's pick stands.
+    d = await discussion.select_speaker(make_session(ROTATION + ["tutor", "peer2"]))
+    assert (d.agent_id, d.directive) == ("peer1", None)
+
+
+async def test_wrap_up_then_end(moderator):
+    long = ["tutor"] + ["peer1", "peer2"] * 8  # 17 messages, past WRAP_UP_MIN_TURN
+    moderator({"speaker": "peer1", "wrap_up": True})
+    d = await discussion.select_speaker(make_session(long))
+    assert (d.agent_id, d.directive, d.meta) == ("tutor", "close", {"closing": True})
+    # Too early to close: the moderator's wish is ignored.
+    assert (await discussion.select_speaker(make_session(ROTATION))).directive != "close"
+    # After the closing message the discussion ends, unless the learner spoke after it.
+    assert (await discussion.select_speaker(make_session(long + ["tutor"], closing_last=True))).end
+    d = await discussion.select_speaker(make_session(long + ["tutor", "user"], closing_last=False))
+    assert not d.end and d.directive == "react"
+
+
+async def test_tutor_closes_just_before_the_turn_limit(moderator):
+    moderator({"speaker": "peer1"})
+    d = await discussion.select_speaker(make_session(ROTATION, turn_limit=len(ROTATION) + 1))
+    assert (d.agent_id, d.directive) == ("tutor", "close")
+
+
+class Sink:
+    def __init__(self):
+        self.text = ""
+
+    async def write(self, chunk: str) -> None:
+        self.text += chunk
+
+
+@pytest.mark.parametrize("chunks, expected", [
+    (["Mar", "cus: I think ", "so."], "I think so."),
+    (["[T3] Marcus", ":", " hi"], "hi"),
+    (["peer1: hi"], "hi"),
+    (["Marcus thinks so"], "Marcus thinks so"),  # the name, but not a label
+    (["Mark my words"], "Mark my words"),
+    (["I agree, Marcus: it's the angle."], "I agree, Marcus: it's the angle."),
+    (["M"], "M"),  # short reply still gets out on flush
+])
+async def test_name_prefix_is_stripped_only_at_the_start(moderator, chunks, expected):
+    fake = moderator({"chunks": chunks})
+    s = make_session(ROTATION)
+    out = Sink()
+    await discussion.speak(s, discussion.SpeakerDecision(agent_id="peer1"), out)
+    assert out.text == expected and fake.streamed
