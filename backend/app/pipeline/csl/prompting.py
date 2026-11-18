@@ -34,7 +34,7 @@ STRIDE = 15
 LANG = {"ko": "Korean (natural spoken 존댓말, '-요' endings)", "en": "English"}
 USER_LABEL = {"ko": "학습자", "en": "Learner"}
 
-SESSION_BLOCK = """This is a simulated study discussion in a learning app. A tutor and students with incomplete, partly wrong understanding discuss one topic. A learner watches and may join in at any time; their messages are labelled "{user}". When you speak to the learner, address them directly in the second person (in Korean, without any title such as "학습자님"), and never credit their idea to someone else. Never write the label "{user}" or a turn label such as "[T13]" in a message. The discussion exists so the learner notices gaps in their own understanding.
+SESSION_BLOCK = """This is a simulated study discussion in a learning app. A tutor and students with incomplete, partly wrong understanding discuss one topic. A learner watches and may join in at any time; their messages are labelled "{user}". When you speak to the learner, address them directly in the second person. In Korean never name or title the learner at all (no "학습자", "학습자님", "당신"): Korean drops the subject, so write e.g. "이번에는 직접 설명해 주실래요?" or "방금 말해 준 것처럼". Never credit their idea to someone else. Never write the label "{user}" or a turn label such as "[T13]" in a message. The discussion exists so the learner notices gaps in their own understanding.
 
 Topic: {topic}
 Focus: {focus}
