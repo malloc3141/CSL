@@ -101,3 +101,23 @@ async def test_reply_eaten_by_reasoning_gives_a_clear_error(tmp_path):
     llm, fake = make_llm(tmp_path, [FakeStream(["Hel", "lo"], usage(5))])
     assert [c async for c in llm.stream([{"role": "user", "content": "x"}])] == ["Hel", "lo"]
     assert fake.calls[0]["stream"] and fake.calls[0]["stream_options"] == {"include_usage": True}
+
+
+async def test_session_id_is_sent_for_sticky_caching_and_dropped_if_rejected(tmp_path):
+    from app.session import Session, current_session
+
+    llm, fake = make_llm(tmp_path, [reply("hi", usage(2))])
+    await llm.complete([{"role": "user", "content": "x"}])
+    assert "session_id" not in fake.calls[0]["extra_body"]  # no session: nothing to key on
+
+    token = current_session.set(Session("sess-123", "topic", "en", 60))
+    try:
+        llm, fake = make_llm(
+            tmp_path, [BadRequest("no reasoning"), BadRequest("no session_id"), reply("hi", usage(2))]
+        )
+        assert await llm.complete([{"role": "user", "content": "x"}]) == "hi"
+        assert fake.calls[0]["extra_body"]["session_id"] == "sess-123"
+        assert "reasoning" not in fake.calls[1]["extra_body"] and fake.calls[1]["extra_body"]["session_id"] == "sess-123"
+        assert "session_id" not in fake.calls[2]["extra_body"]
+    finally:
+        current_session.reset(token)

@@ -126,6 +126,12 @@ class LLM:
         reasoning = reasoning_param(self.settings.llm_reasoning)
         if reasoning is not None:
             extra["reasoning"] = reasoning
+        # Sticky routing key: OpenRouter otherwise keys stickiness on a hash of the first system and first
+        # user message, which differ between agent roles, so one session's calls could land on different
+        # provider endpoints and miss each other's prompt cache.
+        session = current_session.get()
+        if session is not None:
+            extra["session_id"] = session.id
         kwargs: dict[str, Any] = {"model": name, "messages": messages, "temperature": temperature, "extra_body": extra}
         if max_tokens:
             kwargs["max_tokens"] = max_tokens
@@ -135,7 +141,8 @@ class LLM:
         """chat.completions.create, dropping optional fields the model rejects (400/404/422).
 
         Not every model on OpenRouter supports response_format, and models that always reason
-        may reject a request to turn reasoning off.
+        may reject a request to turn reasoning off. session_id (sticky routing for the prompt cache)
+        is optional too: if it is ever rejected, the call goes on without it.
         """
         while True:
             try:
@@ -143,10 +150,13 @@ class LLM:
             except Exception as exc:
                 if getattr(exc, "status_code", None) not in (400, 404, 422):
                     raise
+                extra = kwargs.get("extra_body", {})
                 if "response_format" in kwargs:
                     kwargs.pop("response_format")
-                elif "reasoning" in kwargs.get("extra_body", {}):
-                    kwargs["extra_body"] = {k: v for k, v in kwargs["extra_body"].items() if k != "reasoning"}
+                elif "reasoning" in extra:
+                    kwargs["extra_body"] = {k: v for k, v in extra.items() if k != "reasoning"}
+                elif "session_id" in extra:
+                    kwargs["extra_body"] = {k: v for k, v in extra.items() if k != "session_id"}
                 else:
                     raise
 
