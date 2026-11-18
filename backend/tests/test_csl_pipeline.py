@@ -210,6 +210,11 @@ async def test_moderator_points_the_speaker_at_an_open_question(moderator):
     moderator({"speaker": "peer1", "respond_to": 99})
     assert (await discussion.select_speaker(s)).meta == {}
 
+    # A question one student already took up is not handed to the next one as well.
+    s.messages[-1].meta = {"respondTo": 5}
+    moderator({"speaker": "peer1", "respond_to": 5})
+    assert (await discussion.select_speaker(s)).meta == {}
+
 
 async def test_stalled_discussion_brings_in_the_tutor_once(moderator):
     moderator({"speaker": "peer1", "stalled": True})

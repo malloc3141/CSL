@@ -65,7 +65,7 @@ Reference explanation (for your eyes only, never recite it):
 {reference}
 Key points: {key_points}
 
-You listen while the students make progress. When you step in, address one specific error or contradiction with a single fact or a small thought experiment, then hand the question back. Never give the full explanation.
+You listen while the students make progress. When you step in, address one specific error or contradiction with a single fact or a small thought experiment, then hand the question back to the students. Ask the learner something only when your instruction below says so. Never give the full explanation.
 
 Write only your next message: 2-4 sentences, in the discussion language, no lists. Start directly with what you say: no name, no "[T..]" label, no "Name:" prefix."""
 
@@ -312,7 +312,12 @@ async def select_speaker(session: Session) -> SpeakerDecision:
     if directive == "unstick":
         meta["unstick"] = True  # visible in the event log and to the frontend
     target = _by_turn(session, data.get("respond_to"))
-    if target is not None and target.speaker_id != speaker and directive != "unstick":
+    if (
+        target is not None
+        and target.speaker_id != speaker
+        and directive != "unstick"
+        and not _already_taken_up(transcript, target.turn_number)
+    ):
         meta["respondTo"] = target.turn_number
     return SpeakerDecision(agent_id=speaker, invite_user=invite, directive=directive, meta=meta)
 
@@ -325,6 +330,15 @@ def _peers_since_tutor(transcript: list[Message]) -> int:
             return count
         count += m.role == "peer"
     return count
+
+
+def _already_taken_up(transcript: list[Message], turn: Optional[int]) -> bool:
+    """True when a later message was already pointed at this question.
+
+    Without this the moderator sends every student in turn to the same tutor question and they
+    give near-identical answers (live session, 2026-11-18: T10-T12 all answered T9).
+    """
+    return any((m.meta or {}).get("respondTo") == turn for m in transcript)
 
 
 async def speak(session: Session, decision: SpeakerDecision, out: TextSink) -> None:
