@@ -99,7 +99,7 @@ async def test_csl_discussion_flow_and_cache_layout(settings, store, fake_llm):
             role, flat = _role(m), json.dumps(m, ensure_ascii=False)
             assert (REFERENCE in flat) == (role == "ROLE: the tutor."), role
         # Learner messages are rendered with the learner label and the invitation note.
-        assert any("[T" in t and "나 (answering the tutor's invitation): 기울기" in t for t in _texts(calls[-1]))
+        assert any("[T" in t and "학습자 (answering the tutor's invitation): 기울기" in t for t in _texts(calls[-1]))
 
         # The cache invariants: one session block for every call; per role, an identical system message, and
         # each request's transcript blocks are an exact prefix of the next request's.

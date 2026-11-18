@@ -32,9 +32,9 @@ CACHE: dict[str, str] = {"type": "ephemeral"}
 STRIDE = 15
 
 LANG = {"ko": "Korean (natural spoken 존댓말, '-요' endings)", "en": "English"}
-USER_LABEL = {"ko": "나", "en": "You"}
+USER_LABEL = {"ko": "학습자", "en": "Learner"}
 
-SESSION_BLOCK = """This is a simulated study discussion in a learning app. A tutor and students with incomplete, partly wrong understanding discuss one topic. A learner watches and may join in at any time; their messages are labelled "{user}". The discussion exists so the learner notices gaps in their own understanding.
+SESSION_BLOCK = """This is a simulated study discussion in a learning app. A tutor and students with incomplete, partly wrong understanding discuss one topic. A learner watches and may join in at any time; their messages are labelled "{user}". When you answer the learner, address them directly as "you" and never credit their idea to someone else. The discussion exists so the learner notices gaps in their own understanding.
 
 Topic: {topic}
 Focus: {focus}
@@ -54,7 +54,7 @@ def session_block(topic: str, focus: Optional[str], language: str, participants:
     )
     return SESSION_BLOCK.format(
         topic=topic, focus=focus or topic, lang=LANG.get(language, language), roster=roster,
-        user=USER_LABEL.get(language, "You"),
+        user=USER_LABEL.get(language, "Learner"),
     )
 
 

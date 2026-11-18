@@ -163,7 +163,7 @@ def _respond_to_text(session: Session, decision: SpeakerDecision) -> str:
     target = _by_turn(session, decision.meta.get("respondTo"))
     if target is None:
         return ""
-    who = USER_LABEL.get(session.language, "You") if target.role == "user" else target.speaker_name
+    who = USER_LABEL.get(session.language, "Learner") if target.role == "user" else target.speaker_name
     return (
         f"Before anything else, take up the open question in [T{target.turn_number}] from {who}: answer it from "
         "your own understanding, or say honestly why you cannot answer it yet."
