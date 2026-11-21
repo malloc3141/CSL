@@ -126,6 +126,7 @@ export interface Health {
   pipeline: string;
   sessionPipelines: string[];
   freePipelines: string[];
+  accessCodeRequired: boolean;
   activeSessions: number;
   protocolVersion: number;
 }

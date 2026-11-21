@@ -82,6 +82,7 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[Pipeline]
             pipeline=registry().pipeline.name,
             session_pipelines=list(SESSION_PIPELINES),
             free_pipelines=[name for name in SESSION_PIPELINES if name in FREE_PIPELINES],
+            access_code_required=bool(settings.access_code),
             active_sessions=len(registry().runners),
         ).wire()
 

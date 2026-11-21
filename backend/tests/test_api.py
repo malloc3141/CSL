@@ -27,7 +27,8 @@ def send(ws, type_, **data):
 def test_rest_and_websocket_flow(tmp_path):
     app = create_app(make_settings(tmp_path, admin_token="s3cret"), fast_mock())
     with TestClient(app) as http:
-        assert http.get("/api/health").json()["pipeline"] == "mock"
+        health = http.get("/api/health").json()
+        assert health["pipeline"] == "mock" and health["accessCodeRequired"] is False
         assert http.post("/api/sessions", json={"topic": "  "}).status_code == 422
         created = http.post("/api/sessions", json={"topic": "여름은 왜 더운가", "language": "ko"}).json()
         sid = created["sessionId"]

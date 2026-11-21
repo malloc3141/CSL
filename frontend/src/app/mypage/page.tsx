@@ -221,7 +221,7 @@ export default function MyPage() {
               {sessions.map((session) => {
                 const done = session.phase === "ended";
                 // The classroom page continues the session named in the URL (?session=<id>).
-                const href = `/chat?session=${encodeURIComponent(session.sessionId)}&topic=${encodeURIComponent(session.topic)}`;
+                const href = `/chat?session=${encodeURIComponent(session.sessionId)}`;
                 return (
                   <Item key={session.sessionId}>
                     <div>

@@ -13,7 +13,8 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 ```
 
 `snapshot` is always the complete, current state of the session; render from it.
-`src/app/dev/page.tsx` is a working example of everything below.
+`src/app/dev/page.tsx` is a working example of everything below; the product pages (`src/app/page.tsx`,
+`src/app/chat/ChatSession.tsx`) use the same calls.
 
 **Free sessions for UI work.** `createSession({ topic, pipeline: "mock" })` runs that one session on the
 scripted mock, whatever pipeline the server uses: no LLM calls, no cost, no access code. It replays the
@@ -112,7 +113,7 @@ REST (JSON, camelCase):
 | --- | --- |
 | `POST /api/sessions` `{ topic, language?, accessCode?, pipeline?, userId? }` | → `{ sessionId, snapshot }`. `pipeline` is a name from `sessionPipelines`; `"mock"` needs no access code. `userId` records the session as that user's. 403 = wrong access code, 404 = unknown user, 422 = unknown pipeline or empty topic, 429 / 503 = rate limit / server full |
 | `GET /api/sessions/{id}` | → snapshot (404 = no such session) |
-| `GET /api/health` | → `{ ok, pipeline, sessionPipelines, freePipelines, activeSessions, protocolVersion }` |
+| `GET /api/health` | → `{ ok, pipeline, sessionPipelines, freePipelines, accessCodeRequired, activeSessions, protocolVersion }` |
 | `POST /api/users/login` `{ name }` | → `{ user: { userId, name, createdAt }, created }`. 2 to 20 characters; 422 otherwise |
 | `GET /api/users/{userId}` | → user (404 = unknown) |
 | `GET /api/users/{userId}/sessions` | → `SessionSummary[]`, newest first |

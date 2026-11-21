@@ -77,45 +77,69 @@ const Note = styled(Description)`
   font-size: 12px;
 `;
 
-const PARTICIPANTS = [
+export type OverviewParticipant = {
+  name: string;
+  /** 0-based index among the peers (picks the colour); null for the tutor. */
+  peerIndex: number | null;
+  /** Why this participant exists. */
+  basis: string;
+  /** Initial understanding (peer) or role (tutor). */
+  belief: string;
+  note?: string;
+};
+
+// Shown when no participants are passed (component demo).
+const PARTICIPANTS: OverviewParticipant[] = [
   {
     name: "Peer 1",
+    peerIndex: 0,
     basis: "A common misconception about the topic",
     belief: "“Could a simple, everyday explanation account for this?”",
     note: "Brings an intuitive perspective for the classroom to examine.",
   },
   {
     name: "Peer 2",
+    peerIndex: 1,
     basis: "An alternative hypothesis to explore",
     belief: "“What if another factor is responsible?”",
     note: "Offers a different explanation to compare with your own ideas.",
   },
   {
     name: "Tutor",
+    peerIndex: null,
     basis: "Discussion guidance and explanation checking",
     belief: "“What evidence would help us test these explanations?”",
     note: "Helps compare assumptions and evidence to build understanding.",
   },
 ];
 
-export function ClassroomOverview({ topic }: { topic: string }) {
+export function ClassroomOverview({
+  topic,
+  participants = PARTICIPANTS,
+}: {
+  topic: string;
+  /** The session's participants (snapshot.participants with their initial states). */
+  participants?: OverviewParticipant[];
+}) {
   return (
     <Overview>
       <Heading>Your classroom is ready!</Heading>
       <Description>
-        Meet the participants who will help you explore {topic} from three perspectives.
+        Meet the participants who will help you explore {topic} from {participants.length === 3 ? "three" : participants.length} perspectives.
+        The peers are learners like you, so what they say can be wrong. The tutor guides the discussion and will
+        ask you to explain your own understanding; it does not have to be complete or correct.
       </Description>
       <Grid>
-        {PARTICIPANTS.map((participant, index) => (
+        {participants.map((participant) => (
           <Participant key={participant.name}>
-            <Badge $peerIndex={participant.name === "Tutor" ? null : index}>{participant.name}</Badge>
+            <Badge $peerIndex={participant.peerIndex}>{participant.name}</Badge>
             <Details>
               <dt>Creation basis</dt>
               <dd>{participant.basis}</dd>
               <dt>Initial understanding / role</dt>
               <dd>{participant.belief}</dd>
             </Details>
-            <Note>{participant.note}</Note>
+            <Note>{participant.note ?? ""}</Note>
           </Participant>
         ))}
       </Grid>

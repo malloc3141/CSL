@@ -16,8 +16,8 @@ Who works where, as of 2026-11-21. · 2026-11-21 기준, 누가 어디서 무엇
   (`discussion.py`)은 구현되어 있고, 설정 대화와 knowledge state 부분(`knowledge.py`)은 아직 임시 구현
   `baseline`을 그대로 호출합니다. 서버 기본값은 여전히 `PIPELINE=baseline`이고, 모델은 두 종류 모두
   `anthropic/claude-haiku-5.5`입니다.
-- 제품 UI: 시작 화면(`/`)과 교실 화면(`/chat`)이 만들어졌지만 **아직 백엔드에 연결되어 있지 않습니다**(고정
-  데이터로 동작). 실제 세션을 돌려 볼 수 있는 곳은 `/dev`입니다.
+- 제품 UI: 시작 화면(`/`)과 교실 화면(`/chat`)이 백엔드에 연결되어 실제 세션으로 동작합니다. 세션은 서버
+  기본 파이프라인(지금은 `baseline`)으로 만들어집니다. `/dev`는 모든 상태를 그대로 보여 주는 확인용 페이지입니다.
 - 로그인: 닉네임만 입력합니다(비밀번호 없음). 로그인한 사용자가 만든 세션은 그 사용자의 것으로 기록되어,
   중간에 나가도 어느 브라우저에서든 같은 닉네임으로 다시 찾아 이어갈 수 있습니다. 제품 시작 화면(`/`)은 로그인이
   필수이고 `/dev`는 선택입니다.
@@ -81,7 +81,10 @@ pnpm dev
 - `init_turn(session, out)` → 가이드의 다음 말을 `out.write()`로 쓰고 `InitResult(done)`을 반환합니다. 처음에는
   빈 `session.init_transcript`로, 그 뒤로는 학습자가 답할 때마다 호출됩니다. `done=True`를 반환하면 설정 대화가
   끝나고 `build_classroom`이 호출됩니다. 이 대화의 내용이 `build_classroom`의 입력입니다. baseline은
-  질문 → 되묻기 → 마무리의 3단계입니다. 빈 발화는 오류로 처리됩니다.
+  질문 → 되묻기 → (가이드가 더 필요하다고 보면 추가 되묻기) → 마무리 순서입니다. 답이 2번 온 뒤부터는
+  가이드가 메시지와 종료 여부를 JSON(`{"message": ..., "done": true|false}`)으로 함께 답합니다(답이 4번 오면
+  마무리하라고 지시). `done`이 true이고 메시지가 질문으로 끝나지 않을 때만 교실 구성으로 넘어가고, 그 밖에는
+  학습자의 답을 기다립니다. 이 단계의 메시지는 스트리밍 없이 한 번에 나옵니다. 빈 발화는 오류로 처리됩니다.
 - `build_classroom(session)` → `Classroom(participants, states, focus)`. 튜터 1명과 피어들, 피어 id별 초기
   `KnowledgeState`. 입력은 `session.topic`과 설정 대화 `session.init_transcript`입니다.
 - `update_states(session, message)` → `list[StateUpdate]`. 토론에 들어간 메시지(에이전트, 학습자 모두)마다
@@ -200,7 +203,37 @@ SESSION_PIPELINES: dict[str, str] = {
 ### 7. Jeeyun: 프론트엔드 UI
 
 **어디서.** `frontend/src/app/page.tsx`(시작 화면), `src/app/chat/`(교실 화면), `src/common`, `src/styles`.
-두 화면은 지금 고정 데이터와 로컬 상태로 동작합니다. 남은 일은 이 화면들을 백엔드에 연결하는 것입니다.
+
+**지금 연결된 상태** (11-21, 디자인은 그대로 두고 데이터만 실제 세션으로 바꿨습니다).
+- `page.tsx`: 주제를 입력하면 세션을 만들고(`createSession`) 주소가 `/?session=<id>`가 됩니다. 세 단계는 서버의
+  `snapshot.phase`를 따라갑니다: Initial question = `init`(가이드와의 설정 대화, Composer는 `actions.replyInit`),
+  Learning direction = `building`, Classroom setup = `ready`(`ClassroomOverview`에 실제 참가자 전달). `init`에서
+  Next는 설정 대화의 나머지를 건너뜁니다(`actions.finishInit`). "Start learning session"은 `/chat?session=<id>`로
+  이동합니다. 서버에 access code가 걸려 있으면 주제 아래에 입력 칸이 나오고, 한 번 통과한 값은 브라우저가 기억합니다.
+- `chat/ChatSession.tsx`: 주소의 `?session=<id>`로 세션을 엽니다. 들어오면 토론이 시작되고(`ready`일 때
+  `actions.startDiscussion`), 메시지는 `snapshot.messages`의 discussion 채널, 입력 중 표시는 `snapshot.activeTurn`,
+  Pause/Resume는 `actions.pause` / `actions.resume`, Composer는 `actions.say`, 오른쪽 패널은 선택한 참가자의
+  최신 `snapshot.states[id]`입니다. 참가자를 누르면 `actions.track("panel.open")`으로 기록됩니다. 아직 설정 중인
+  세션으로 들어오면 `/?session=<id>`로 돌려보냅니다.
+- `ClassroomOverview`는 `participants` prop을 받습니다(없으면 기존 예시 데이터).
+- `/?pipeline=mock`으로 열면 그 세션은 비용 없는 mock으로 만들어집니다(UI 확인용, access code 불필요).
+  `/?pipeline=csl`도 같은 방식입니다.
+
+**Studio 3 인터뷰에서 나온 것 중 교실 화면에 넣은 것** (11-21, `chat/ChatSession.tsx`).
+- 4번(Peer의 말을 정답으로 오해): 패널의 belief와 설명 옆에 Correct / Partly correct / Incorrect 표시
+  (`accuracy`, `explanationAccuracy`), 패널 아래의 "Mark what is correct and incorrect"로 끌 수 있습니다. 패널과
+  교실 소개 화면에 "Peer는 전문가가 아니라 학습자"라는 안내 문구가 있습니다.
+- 6번(진행 속도): 대화 위에 Auto-advance 켜기/끄기, 속도(0.5× ~ 2×), "Next message" 버튼
+  (`actions.setPace`, `actions.step`). 패널 아래의 "Pause the discussion when I open a panel"을 켜면 참가자를 고를 때
+  일시정지됩니다.
+- 9번(상태가 언제 바뀌었는지): 상태가 바뀐 참가자는 목록에 점이 붙고, 그 변화를 일으킨 메시지 아래에
+  "…'s understanding changed" 링크가 생깁니다. 패널에는 "Updated after turn N: show the message"(그 메시지로
+  이동), 이번에 바뀐 내용(`changes`의 전/후), 접혀 있는 "Earlier understanding"(이전 버전 전체)이 있습니다.
+- 두 설정은 브라우저의 localStorage(`csl.classroomPrefs`)에 남습니다.
+
+**아직 UI에 없는 것.** 토론 언어 선택(지금은 영어 고정, Navbar의 Language 버튼은 연결 안 됨), Peer들의 상태를
+나란히 비교하는 화면(10번), Open question 접기와 질문 로그(11번), 패널 접기와 위치(12번), 음성 입력(14번).
+아래 표의 값들로 만들 수 있습니다.
 
 **백엔드 연결은 이미 있습니다.** 두 개만 쓰면 됩니다.
 
@@ -218,10 +251,6 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   재생하며 주제는 무시합니다. 15번째 턴에서 튜터가 학습자에게 설명을 요청합니다.
 - 실제 에이전트는 `pipeline: "csl"`로 만듭니다(`pipeline`을 빼면 서버 기본값인 `baseline`). 실서버에서는
   access code 입력이 필요합니다. 고를 수 있는 이름 목록은 `fetchHealth()`가 돌려줍니다.
-- 화면과 `snapshot.phase`의 대응: 시작 화면의 설정 단계 = `init`(설정 대화) → `building`(교실 구성 중) →
-  `ready`(교실 소개, `actions.startDiscussion()`으로 시작), 교실 화면 = `discussion` → `ended`.
-  `/`에서 세션을 만든 뒤 `/chat?session=<id>`로 이동하면 교실 화면에서 `useCurrentSessionId()`로 그 id를
-  읽을 수 있습니다.
 
 **알아둘 것.**
 - `src/lib/csl/protocol.ts`는 생성되는 파일입니다. 손으로 고치지 마세요. 타입이 부족하면 Hyunmin에게 알려 주세요.
@@ -233,10 +262,9 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   - `src/common/components/LoginCard.tsx`: 로그인 폼. `/`는 로그인 전에는 이 폼을 보여 줍니다(`page.tsx` 맨 위의
     `if (!user)` 분기).
   - `src/app/mypage/page.tsx`: 내 세션 목록. "Continue"는 `/chat?session=<id>&topic=<주제>`로 이동합니다.
-- **`/chat`이 `?session=<id>`를 읽어야 이어가기가 완성됩니다.** `useCurrentSessionId()`가 그 값을 돌려주고,
-  `useCslSession(id)`에 넘기면 서버가 그 세션의 전체 snapshot을 보냅니다(새로고침, 뒤로 가기, 링크 공유도 같은
-  세션으로 돌아옵니다). `/`에서 세션을 만든 뒤에도 같은 주소 형식으로 `/chat`에 넘기면 됩니다. 사용 예는 `/dev`와
-  [PROTOCOL.md](backend/docs/PROTOCOL.md)에 있습니다.
+- **이어가기.** 두 화면 모두 주소의 `?session=<id>`(`useCurrentSessionId()`)로 세션을 열기 때문에 새로고침,
+  뒤로 가기, 링크 공유, 마이페이지의 Continue가 모두 같은 세션으로 돌아옵니다. 화면을 떠나면 토론은 서버에서
+  일시정지되고, 다시 들어오면 이어집니다.
 - 서버가 볼 수 없는 UI 동작은 `actions.track(name, data)`로 기록하세요(예: 패널 열기). Milestone 5의 사용 분석에 씁니다.
 - UI 문구는 영어가 기본입니다. 토론 언어는 세션을 만들 때 `language: "en" | "ko"`로 고릅니다.
 - Next.js 16입니다. 코드를 쓰기 전에 [frontend/AGENTS.md](frontend/AGENTS.md)를 보세요.
@@ -266,7 +294,7 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 
 - Alex: `knowledge.py`의 실제 구현(설정 대화, 교실 구성, 상태 갱신). 상태 갱신이 중간에 멈추는 문제가 가장 급합니다(4절).
 - Seongho: 토론 다듬기. 브랜치 `seongho/cache-friendly-discussion`에 `main`에 없는 커밋이 하나 있습니다(`78a1244`).
-- Jeeyun: `/`와 `/chat`을 백엔드에 연결(7절). `/chat`이 `?session=<id>`를 읽으면 마이페이지의 이어가기가 동작합니다.
+- Jeeyun: 제품 UI 다듬기. 연결은 되어 있고, 아직 UI에 없는 것은 7절에 적혀 있습니다.
 - Hyunmin: 서버 기본값을 `csl`로 전환, 서버 재부팅 확인, 동시 사용자 확인, 보고서(URL, access code,
   라이브러리와 도구 목록, 스크린샷, System Architecture 탭)
 - 팀: 토론에서 학습자를 어떻게 부를지 정하기(지금 화면에는 "나", 프롬프트에는 "Learner")
@@ -283,8 +311,9 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   discussion side (`discussion.py`) is implemented; the setup chat and knowledge-state side (`knowledge.py`) still
   calls the placeholder `baseline`. The server's default is still `PIPELINE=baseline`, with
   `anthropic/claude-haiku-5.5` as both models.
-- Product UI: the start page (`/`) and the classroom page (`/chat`) exist but are **not connected to the backend
-  yet** (they run on fixed data). The place to run a real session is `/dev`.
+- Product UI: the start page (`/`) and the classroom page (`/chat`) are connected to the backend and run real
+  sessions, created on the server's default pipeline (`baseline` at the moment). `/dev` remains the bare page that
+  shows every piece of state.
 - Login: a nickname and nothing else (no password). Sessions created while signed in are recorded as that
   user's, so a learner who leaves midway finds the session again with the same nickname, from any browser. The
   product start page (`/`) requires it; `/dev` makes it optional.
@@ -349,7 +378,11 @@ the request with `build_messages` from `csl/prompting.py` so it uses the prompt 
 - `init_turn(session, out)` → write the guide's next message with `out.write()` and return `InitResult(done)`.
   Called first with an empty `session.init_transcript`, then again after every learner reply. Returning
   `done=True` ends the setup chat and `build_classroom` is called; what was said here is the input of
-  `build_classroom`. The baseline does it in three steps: ask → probe → close. An empty message counts as an error.
+  `build_classroom`. The baseline goes ask → probe → (more follow-ups if the guide needs them) → closing message.
+  From the second reply on the guide answers with its message and whether it is done, as JSON
+  (`{"message": ..., "done": true|false}`; after four replies it is told to close). The classroom is built only
+  when `done` is true and the message does not end with a question; otherwise the chat waits for the learner's
+  answer. Messages of this stage arrive whole, not streamed. An empty message counts as an error.
 - `build_classroom(session)` → `Classroom(participants, states, focus)`: one tutor, the peers, and an initial
   `KnowledgeState` per peer id. The inputs are `session.topic` and the setup chat, `session.init_transcript`.
 - `update_states(session, message)` → `list[StateUpdate]`. Called exactly once for every message that entered the
@@ -476,7 +509,42 @@ example), tell Hyunmin. After a change to `protocol.py` the frontend types are r
 ### 7. Jeeyun: frontend UI
 
 **Where.** `frontend/src/app/page.tsx` (start page), `src/app/chat/` (classroom page), `src/common`, `src/styles`.
-Both pages currently run on fixed data and local state. What is left is connecting them to the backend.
+
+**What is connected now** (11-21; the design is unchanged, only the data became a real session).
+- `page.tsx`: entering a topic creates a session (`createSession`) and the address becomes `/?session=<id>`. The
+  three steps follow the server's `snapshot.phase`: Initial question = `init` (the setup chat with the guide; the
+  Composer sends `actions.replyInit`), Learning direction = `building`, Classroom setup = `ready` (the real
+  participants go into `ClassroomOverview`). In `init`, Next skips the rest of the setup chat
+  (`actions.finishInit`). "Start learning session" goes to `/chat?session=<id>`. If the server has an access code,
+  a field appears under the topic; a code that worked is remembered by the browser.
+- `chat/ChatSession.tsx`: opens the session named by `?session=<id>`. Entering starts the discussion
+  (`actions.startDiscussion` when the phase is `ready`). Messages are the discussion channel of
+  `snapshot.messages`, the typing bubble is `snapshot.activeTurn`, Pause / Resume are `actions.pause` /
+  `actions.resume`, the Composer sends `actions.say`, and the right panel shows the latest
+  `snapshot.states[id]` of the selected participant. Selecting a participant is logged with
+  `actions.track("panel.open")`. A session that is still being set up is sent back to `/?session=<id>`.
+- `ClassroomOverview` takes a `participants` prop (without it, the earlier sample data).
+- Opening `/?pipeline=mock` creates that session on the free mock (for checking the UI; no access code).
+  `/?pipeline=csl` works the same way.
+
+**From the Studio 3 interviews, now in the classroom page** (11-21, `chat/ChatSession.tsx`).
+- Item 4 (peers mistaken for correct information): Correct / Partly correct / Incorrect marks next to the
+  beliefs and the explanation in the panel (`accuracy`, `explanationAccuracy`); "Mark what is correct and
+  incorrect" at the bottom of the panel turns them off. The panel and the classroom introduction say that a peer
+  is a learner, not an expert.
+- Item 6 (pace): above the conversation, Auto-advance on/off, speed (0.5× to 2×) and a "Next message" button
+  (`actions.setPace`, `actions.step`). With "Pause the discussion when I open a panel" on, selecting a participant
+  pauses the discussion.
+- Item 9 (when a state changed): a participant whose state changed gets a dot in the list, and the message that
+  caused the change gets a "…'s understanding changed" link under it. The panel has "Updated after turn N: show
+  the message" (scrolls to that message), what changed this time (before / after from `changes`) and a collapsed
+  "Earlier understanding" with every earlier version.
+- The two options are kept in the browser's localStorage (`csl.classroomPrefs`).
+
+**Not in the UI yet.** Choosing the discussion language (English for now; the Language button in the Navbar is
+not connected), a side-by-side comparison of the peers' states (item 10), collapsing Open question and a question
+log (item 11), collapsing and moving the panel (item 12), voice input (item 14). The table below says what to
+build them from.
 
 **The backend connection already exists.** Two things are all you need:
 
@@ -495,10 +563,6 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   the topic. In turn 15 the tutor asks the learner to explain.
 - For the real agents use `pipeline: "csl"` (leaving `pipeline` out gives the server's default, `baseline`). On
   the live server that needs an access-code field. `fetchHealth()` returns the names that can be picked.
-- Pages and `snapshot.phase`: the setup steps of the start page = `init` (setup chat) → `building` (classroom being
-  created) → `ready` (classroom introduced; `actions.startDiscussion()` starts it); the classroom page =
-  `discussion` → `ended`. After creating the session on `/`, navigate to `/chat?session=<id>`; the classroom page
-  reads that id with `useCurrentSessionId()`.
 
 **Good to know.**
 - `src/lib/csl/protocol.ts` is generated. Do not edit it by hand; if a type is missing, tell Hyunmin.
@@ -510,10 +574,9 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   - `src/common/components/LoginCard.tsx`: the sign-in form. `/` shows it until someone is signed in (the
     `if (!user)` branch at the top of `page.tsx`).
   - `src/app/mypage/page.tsx`: the list of my sessions. "Continue" goes to `/chat?session=<id>&topic=<topic>`.
-- **Continuing a session is complete once `/chat` reads `?session=<id>`.** `useCurrentSessionId()` returns it;
-  pass it to `useCslSession(id)` and the server sends that session's full snapshot (a reload, the back button and
-  a shared link return to the same session too). After creating a session on `/`, hand it to `/chat` in the same
-  URL form. `/dev` and [PROTOCOL.md](backend/docs/PROTOCOL.md) show how.
+- **Continuing a session.** Both pages open the session named by `?session=<id>` (`useCurrentSessionId()`), so a
+  reload, the back button, a shared link and "Continue" on My page all return to the same session. Leaving a page
+  pauses the discussion on the server; coming back resumes it.
 - Log UI actions the server cannot see with `actions.track(name, data)` (opening a panel, for example). Milestone 5
   analyses usage from these.
 - UI text is English by default. The discussion language is chosen per session with `language: "en" | "ko"`.
@@ -546,7 +609,7 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   stops partway is the most urgent item (section 4).
 - Seongho: refining the discussion. The branch `seongho/cache-friendly-discussion` has one commit that is not on
   `main` (`78a1244`).
-- Jeeyun: connect `/` and `/chat` to the backend (section 7). Once `/chat` reads `?session=<id>`, "Continue" on My page works.
+- Jeeyun: refine the product UI. It is connected; what is not in the UI yet is listed in section 7.
 - Hyunmin: switch the server's default to `csl`, reboot test, check with several simultaneous users, the report
   (URL, access code, list of libraries and tools, screenshots, the System Architecture tab)
 - Team: decide how the discussion refers to the learner (the screen shows "나" / "You", the prompt says "Learner")

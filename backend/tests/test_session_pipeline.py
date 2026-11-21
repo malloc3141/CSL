@@ -46,6 +46,7 @@ def test_session_on_a_named_pipeline(tmp_path, registered):
     with TestClient(create_app(settings, FakeDefault())) as http:
         health = http.get("/api/health").json()
         assert health["pipeline"] == "fake" and health["freePipelines"] == ["mock"]
+        assert health["accessCodeRequired"] is True  # this server was started with an access code
         assert health["sessionPipelines"] == list(SESSION_PIPELINES) and "other" in health["sessionPipelines"]
 
         # Only pipelines without LLM calls skip the access code.

@@ -307,6 +307,8 @@ class Health(Wire):
     session_pipelines: list[str]
     # The ones among them that make no LLM calls and need no access code.
     free_pipelines: list[str]
+    # True if creating a session on a pipeline that is not free needs CreateSessionRequest.access_code.
+    access_code_required: bool = False
     active_sessions: int
     protocol_version: int = PROTOCOL_VERSION
 
