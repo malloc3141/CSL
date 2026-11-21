@@ -39,6 +39,8 @@ class FakeLLM:
 
     async def complete_json(self, messages, **kwargs):
         system, user = messages[0]["content"], messages[-1]["content"]
+        if "setup guide" in system:  # the setup chat's closing message (baseline)
+            return {"message": "교실을 준비할게요.", "done": True}
         if "design a simulated classroom" in system:
             return {
                 "focus": "기울기가 무엇을 바꾸는가?",

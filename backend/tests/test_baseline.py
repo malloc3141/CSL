@@ -17,14 +17,23 @@ class FakeLLM:
     def __init__(self):
         self.streams: list[list[dict]] = []
         self.moderator_calls = 0
+        # Scripted setup chat: a str for a streamed message, a dict for a JSON reply. Empty = the defaults.
+        self.guide: list = []
+        self.guide_json_calls: list[str] = []
 
     async def stream(self, messages, **kwargs):
         self.streams.append(messages)
+        if "setup guide" in messages[0]["content"] and self.guide:
+            yield self.guide.pop(0)
+            return
         for chunk in ("음, ", "그런가요?"):
             yield chunk
 
     async def complete_json(self, messages, **kwargs):
         system, user = messages[0]["content"], messages[-1]["content"]
+        if "setup guide" in system:  # from the second reply on the guide says whether it is done
+            self.guide_json_calls.append(system)
+            return self.guide.pop(0) if self.guide else {"message": "그 부분을 살펴볼게요. 교실을 준비할게요.", "done": True}
         if "design a simulated classroom" in system:
             return {
                 "focus": "기울기가 무엇을 바꾸는가?",
@@ -68,7 +77,7 @@ async def test_baseline_pipeline_flow(settings, store, fake_llm):
         runner = registry.create("계절", "ko")
         s = runner.session
         c = Client(runner)
-        for reply in ("기울어져서요", "햇빛을 더 받아서요"):  # ask -> probe -> close
+        for reply in ("기울어져서요", "햇빛을 더 받아서요"):  # ask -> probe -> closing message
             await c.until("message.completed", lambda d: d["message"]["role"] == "system")
             assert s.phase == "init"
             c.send("init.reply", text=reply)
@@ -114,3 +123,41 @@ def test_extract_json():
         extract_json("no json here")
     with pytest.raises(ValueError):
         extract_json("{broken")
+
+
+async def test_setup_chat_ends_only_on_a_closing_message(settings, store, fake_llm):
+    """The classroom is built when the guide says it is done, not after a fixed number of replies."""
+    fake_llm.guide = [
+        "어떻게 이해하고 있나요?",  # ask
+        "왜 그렇게 되나요?",  # probe
+        # may close, asks for more without a question mark
+        {"message": "말한 '더 받는다'는 게 무엇인지 조금 더 설명해 주세요.", "done": False},
+        # says it is done, but the message ends with a question: the learner is asked, so the chat goes on
+        {"message": "좋아요. 조금만 더 설명해볼까요? 😊", "done": True},
+        # told to close, still asks
+        {"message": "그 부분이 어떻게 이어지는지도 말해 주세요.", "done": False},
+        # closing message (a question mark in the middle is fine)
+        {"message": "기울기가 무엇을 바꾸는가? 이 점을 중심으로 교실을 준비할게요.", "done": True},
+    ]
+    registry = SessionRegistry(settings, store, BaselinePipeline())
+    try:
+        runner = registry.create("계절", "ko")
+        s = runner.session
+        c = Client(runner)
+        for n in range(5):
+            await c.until("message.completed", lambda d: d["message"]["role"] == "system")
+            assert s.phase == "init", n
+            c.send("init.reply", text=f"답 {n + 1}")
+        await c.until("classroom.ready")
+        assert [m.role for m in s.init_transcript] == ["system", "user"] * 5 + ["system"]
+        assert s.init_transcript[-1].text.endswith("교실을 준비할게요.")
+        # The first question and the first follow-up are streamed and always wait for an answer.
+        asked = [m[0]["content"] for m in fake_llm.streams]
+        assert len(asked) == 2 and all('"done"' not in system for system in asked)
+        # After that the guide chooses; after four replies it is told to close.
+        chose = fake_llm.guide_json_calls
+        assert len(chose) == 4 and all('"done": true|false' in system for system in chose)
+        assert "(a)" in chose[0] and "(a)" in chose[1]
+        assert "(a)" not in chose[2] and "do not ask anything" in chose[2]
+    finally:
+        await registry.stop()

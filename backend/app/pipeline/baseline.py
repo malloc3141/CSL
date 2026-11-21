@@ -3,6 +3,8 @@
 It makes the system run end to end with real models, and shows one way to
 implement each Pipeline method. Replace it piece by piece:
 
+* setup chat: ask -> probe -> more follow-ups if the guide needs them -> closing message;
+  the classroom is built only after a message that asks the learner nothing
 * knowledge state: "persistent belief list" (one JSON update per peer per message)
 * turn allocation: reactions to the learner are rule-based; otherwise a hidden
   moderator call picks the next speaker ("centralized selection")
@@ -12,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Any
 
 from ..config import get_settings
@@ -30,11 +33,37 @@ Write in {lang}. Be brief: 1-3 sentences. Never explain the topic, never say whe
 
 {stage}"""
 
+_CLOSING = "in one sentence state the specific point the session will be built around (the part of their explanation that most needs examining). Then say you are setting up the classroom. This is the last message of the setup chat and the learner cannot reply to it: do not ask anything, do not invite them to explain more, and do not end with a question."
+
 INIT_STAGES = {
     "ask": 'The learner entered this topic: "{topic}". If it is broad, narrow it to one concrete why/how question and say which one you picked. Then ask the learner to explain what they currently understand about it in one or two sentences. Tell them a complete or correct answer is not expected.',
     "probe": 'Topic: "{topic}". Ask exactly one short follow-up question about the vaguest or weakest link in the learner\'s explanation ("what exactly do you mean by ...", "why does that follow?").',
-    "close": 'Topic: "{topic}". Close the setup chat: in one sentence name the specific point the session will be built around (the part of their explanation that most needs examining). Then say you are setting up the classroom.',
+    "decide": (
+        'Topic: "{topic}". Write ONE of these two messages. '
+        "(a) If you still cannot tell what the learner thinks the mechanism is, ask exactly one more short follow-up question about the vaguest or weakest link in their explanation. End the message with that question. "
+        "(b) Otherwise close the setup chat: " + _CLOSING
+    ),
+    "close": 'Topic: "{topic}". Close the setup chat: ' + _CLOSING,
 }
+
+# The setup chat is ask -> probe -> (more follow-ups if the guide needs them) -> closing message.
+# After INIT_MIN_REPLIES learner replies the guide may close; from INIT_MAX_REPLIES on it is told to.
+INIT_MIN_REPLIES = 2
+INIT_MAX_REPLIES = 4
+
+# From the point where the guide may close, it says itself whether its message ends the chat.
+# (Appended after the stage text is formatted: the braces are literal.)
+INIT_VERDICT = """
+
+Answer with a single JSON object and nothing else: {"message": "<the message the learner reads>", "done": true|false}
+"done" is about the message you just wrote. true: it closes the setup chat and asks or requests nothing from the learner. false: it asks them a question or asks them to explain, describe or add anything, in any wording, with or without a question mark."""
+
+# A question mark with nothing but punctuation / emoji after it: the message ends by asking.
+_ENDS_WITH_QUESTION = re.compile(r"[?？][^\w?？]*$")
+
+
+def ends_with_question(text: str) -> bool:
+    return bool(_ENDS_WITH_QUESTION.search(text.strip()))
 
 CLASSROOM_SYSTEM = """You design a simulated classroom for one learner. Output a single JSON object and nothing else.
 
@@ -147,18 +176,35 @@ class BaselinePipeline:
     async def init_turn(self, session: Session, out: TextSink) -> InitResult:
         transcript = session.init_transcript
         replies = sum(1 for m in transcript if m.role == "user")
-        stage = "ask" if replies == 0 else "probe" if replies == 1 else "close"
+        if replies == 0:
+            stage = "ask"
+        elif replies < INIT_MIN_REPLIES:
+            stage = "probe"
+        else:
+            stage = "decide" if replies < INIT_MAX_REPLIES else "close"
+        may_close = stage in ("decide", "close")
         system = INIT_SYSTEM.format(
             lang=LANG[session.language], stage=INIT_STAGES[stage].format(topic=session.topic)
-        )
+        ) + (INIT_VERDICT if may_close else "")
         messages = [{"role": "system", "content": system}]
         if not transcript:
             messages.append({"role": "user", "content": session.topic})
         for m in transcript:
             messages.append({"role": "user" if m.role == "user" else "assistant", "content": m.text})
-        async for chunk in get_llm().stream(messages, temperature=0.5, max_tokens=300):
-            await out.write(chunk)
-        return InitResult(done=stage == "close")
+        if not may_close:  # the first question and the first follow-up: always answered by the learner
+            async for chunk in get_llm().stream(messages, temperature=0.5, max_tokens=300):
+                await out.write(chunk)
+            return InitResult(done=False)
+        # The guide says whether this message ends the chat, so the system does what the learner reads:
+        # a request for more waits for the answer, and the classroom is built only after a closing message.
+        # (One JSON call: this message arrives whole instead of streaming.)
+        data = await get_llm().complete_json(messages, temperature=0.5, max_tokens=400)
+        text = str(data.get("message") or "").strip()
+        if not text:
+            raise PipelineError("the setup guide returned no message")
+        await out.write(text)
+        # Belt and braces: a message that ends with a question is never the last one, whatever "done" says.
+        return InitResult(done=data.get("done") in (True, "true") and not ends_with_question(text))
 
     # ------------------------------------------------------------------ classroom
 
