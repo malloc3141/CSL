@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, CornerDownLeft } from "lucide-react";
 import { ClassroomOverview } from "@/common/components/ClassroomOverview";
@@ -124,6 +124,19 @@ const TopicForm = styled.form`
   }
 `;
 
+const InitTranscript = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: none;
+  height: clamp(240px, 48dvh, 480px);
+  overflow-y: auto;
+
+  > * {
+    flex-shrink: 0;
+  }
+`;
+
 const ChatLine = styled.div<{ $own?: boolean }>`
   display: flex;
   align-items: flex-end;
@@ -212,7 +225,15 @@ export default function Home() {
   // A step the learner went back to; forgotten as soon as the session moves to another phase.
   const [manual, setManual] = useState<{ phase: Phase | null; step: number } | null>(null);
 
+  const transcript = useRef<HTMLDivElement>(null);
   const phase = snapshot?.phase ?? null;
+  const phaseStep = phase === "building" ? 1 : phase === "init" || phase === null ? 0 : 2;
+  const step = manual && manual.phase === phase ? Math.min(manual.step, phaseStep) : phaseStep;
+
+  useEffect(() => {
+    const element = transcript.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [snapshot, step, user]);
 
   useEffect(() => {
     let alive = true;
@@ -249,8 +270,6 @@ export default function Home() {
     );
   }
 
-  const phaseStep = phase === "building" ? 1 : phase === "init" || phase === null ? 0 : 2;
-  const step = manual && manual.phase === phase ? Math.min(manual.step, phaseStep) : phaseStep;
   const goTo = (next: number) => {
     if (next >= 0 && next <= phaseStep) setManual({ phase, step: next });
   };
@@ -387,31 +406,35 @@ export default function Home() {
                   {createError ? <ErrorNote role="alert">Could not start the session: {createError}</ErrorNote> : null}
                 </>
               )}
-              {sessionId && shownTopic ? (
-                <ChatLine $own>
-                  <MessageBubble role="user" speaker="You">
-                    {shownTopic}
-                  </MessageBubble>
-                </ChatLine>
-              ) : null}
-              {initMessages.map((message) => {
-                const own = message.role === "user";
-                return (
-                  <ChatLine key={message.id} $own={own}>
-                    {own ? null : <ProfileImage color={theme.colors.BLUE[900]} />}
-                    <MessageBubble role={own ? "user" : "system"} speaker={own ? "You" : message.speakerName}>
-                      {message.text}
-                    </MessageBubble>
-                  </ChatLine>
-                );
-              })}
-              {typing ? (
-                <ChatLine>
-                  <ProfileImage color={theme.colors.BLUE[900]} />
-                  <MessageBubble role="system" speaker={typing.speakerName}>
-                    {typing.text || "…"}
-                  </MessageBubble>
-                </ChatLine>
+              {sessionId ? (
+                <InitTranscript ref={transcript} role="region" aria-label="Initial question messages" tabIndex={0}>
+                  {shownTopic ? (
+                    <ChatLine $own>
+                      <MessageBubble role="user" speaker="You">
+                        {shownTopic}
+                      </MessageBubble>
+                    </ChatLine>
+                  ) : null}
+                  {initMessages.map((message) => {
+                    const own = message.role === "user";
+                    return (
+                      <ChatLine key={message.id} $own={own}>
+                        {own ? null : <ProfileImage color={theme.colors.BLUE[900]} />}
+                        <MessageBubble role={own ? "user" : "system"} speaker={own ? "You" : message.speakerName}>
+                          {message.text}
+                        </MessageBubble>
+                      </ChatLine>
+                    );
+                  })}
+                  {typing ? (
+                    <ChatLine>
+                      <ProfileImage color={theme.colors.BLUE[900]} />
+                      <MessageBubble role="system" speaker={typing.speakerName}>
+                        {typing.text || "…"}
+                      </MessageBubble>
+                    </ChatLine>
+                  ) : null}
+                </InitTranscript>
               ) : null}
               {problem}
               {sessionId ? (
@@ -455,7 +478,7 @@ export default function Home() {
               onClick={next}
             >
               {step >= 2 ? "Start learning session" : "Next"}
-              {step >= 2 ? <ArrowRight size={16} aria-hidden="true" /> : null}
+              <ArrowRight size={16} aria-hidden="true" />
             </Button>
           </Actions>
         </Card>

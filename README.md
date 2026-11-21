@@ -24,10 +24,22 @@ More: [HANDOFF.md](HANDOFF.md) (who works where, 한국어 / English) ·
 
 ## Run locally
 
+Set up dependencies from the repository root on the first run:
+
 ```bash
-cd backend && uv sync --extra dev && uv run uvicorn app.main:app --reload   # http://localhost:8000, mock agents, no API key
-cd frontend && pnpm install && pnpm dev                                     # http://localhost:3000/dev
+(cd backend && uv sync --extra dev)
+(cd frontend && pnpm install)
 ```
+
+Start both development servers from the repository root with Bash 4.3 or newer:
+
+```bash
+./dev.sh
+```
+
+Open [the development page](http://localhost:3000/dev). The backend listens on
+`http://localhost:8000` and defaults to mock agents, which need no API key.
+Press `Ctrl+C` to stop both servers.
 
 ## Built with
 

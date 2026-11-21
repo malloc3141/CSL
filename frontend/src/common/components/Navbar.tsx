@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FolderOpen, Languages, UserRound } from "lucide-react";
+import { Languages, UserRound } from "lucide-react";
 import styled from "styled-components";
 import { useCurrentUser } from "@/lib/csl";
 
@@ -79,11 +79,10 @@ const UserName = styled.span`
 export type NavbarProps = {
   /** Default: open My page (which asks for a nickname when nobody is signed in). */
   onProfileClick?: () => void;
-  onFilesClick?: () => void;
   onLanguageClick?: () => void;
 };
 
-export function Navbar({ onProfileClick, onFilesClick, onLanguageClick }: NavbarProps) {
+export function Navbar({ onProfileClick, onLanguageClick }: NavbarProps) {
   const router = useRouter();
   const user = useCurrentUser();
   const profileLabel = user ? `My page (${user.name})` : "Sign in";
@@ -92,9 +91,6 @@ export function Navbar({ onProfileClick, onFilesClick, onLanguageClick }: Navbar
     <Navigation aria-label="Main navigation">
       <Brand href="/" aria-label="CSL home">CSL</Brand>
       <Actions>
-        <IconButton type="button" aria-label="Files" title="Files" onClick={onFilesClick}>
-          <FolderOpen size={22} aria-hidden="true" />
-        </IconButton>
         <ProfileButton
           type="button"
           aria-label={profileLabel}
