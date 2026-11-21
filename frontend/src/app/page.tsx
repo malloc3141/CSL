@@ -13,7 +13,9 @@ import {
   Stepper,
   TextField,
   Navbar,
+  LoginCard,
 } from "@/common/components";
+import { useCurrentUser } from "@/lib/csl";
 import { peerColor } from "@/styles/peerColors";
 
 const Screen = styled.div`
@@ -195,6 +197,8 @@ export default function Home() {
   const [draft, setDraft] = useState("");
   const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  // Signing in comes first: every session started here belongs to a user (undefined = not known yet).
+  const user = useCurrentUser();
 
   useEffect(() => {
     if (step !== 1) return;
@@ -202,6 +206,19 @@ export default function Home() {
     const timer = window.setTimeout(() => setIsLoading(false), 3000);
     return () => window.clearTimeout(timer);
   }, [step]);
+
+  if (!user) {
+    return (
+      <Screen>
+        <Navbar />
+        <Page>
+          {user === null ? (
+            <LoginCard description="Enter a nickname to start a learning session. Your sessions are kept under it, so you can leave and continue later, from any browser." />
+          ) : null}
+        </Page>
+      </Screen>
+    );
+  }
 
   return (
     <Screen>

@@ -313,6 +313,7 @@ export function SessionsTab({ token }: { token: string }) {
                   <th>Started</th>
                   <th>Topic</th>
                   <th>Phase</th>
+                  <th>User</th>
                   <th>Pipeline</th>
                   <th className="num">Messages</th>
                   <th className="num">LLM</th>
@@ -332,6 +333,7 @@ export function SessionsTab({ token }: { token: string }) {
                       {r.live ? " ●" : ""}
                     </td>
                     <td>{r.phase ?? "?"}</td>
+                    <td>{r.userName ?? "–"}</td>
                     <td>{r.pipeline ?? "–"}</td>
                     <td className="num">{r.messageCount}</td>
                     <td className="num">{r.llmCalls || "–"}</td>

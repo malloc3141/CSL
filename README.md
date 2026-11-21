@@ -13,8 +13,8 @@ Live prototype: https://csl.kimhm.in
 | --- | --- |
 | `backend/app/orchestrator.py` | Runs a session: setup chat → classroom → discussion. Turn loop, reading pace, pause, and the learner interjecting at any time. |
 | `backend/app/pipeline/csl/` | The agents. `discussion.py`: who speaks next and what they say. `knowledge.py`: setup chat, classroom, each peer's knowledge state. |
-| `backend/app/main.py`, `protocol.py` | REST + WebSocket API and every message on the wire. |
-| `frontend/src/app/` | Pages: `page.tsx` (start), `chat/` (classroom), `dev/` (bare page over the whole flow), `admin/` (usage, models, session history). |
+| `backend/app/main.py`, `users.py`, `protocol.py` | REST + WebSocket API, nickname login, and every message on the wire. |
+| `frontend/src/app/` | Pages: `page.tsx` (start), `chat/` (classroom), `mypage/` (sign in, continue a session), `dev/` (bare page over the whole flow), `admin/` (usage, models, session history). |
 | `frontend/src/lib/csl/` | Connection to the backend: generated types, WebSocket client, `useCslSession` hook. |
 | `deploy/`, `.github/workflows/` | systemd units, proxy examples, and the deploy on every push to `main`. |
 

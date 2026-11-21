@@ -15,6 +15,7 @@ export interface SessionSnapshot {
   topic: string;
   language: Language;
   pipeline: string;
+  userId: string | null;
   phase: Phase;
   status: Status;
   pace: Pace;
@@ -112,6 +113,7 @@ export interface CreateSessionRequest {
   language?: Language;
   accessCode?: string | null;
   pipeline?: string | null;
+  userId?: string | null;
 }
 
 export interface CreateSessionResponse {
@@ -128,12 +130,35 @@ export interface Health {
   protocolVersion: number;
 }
 
+export interface LoginRequest {
+  name: string;
+}
+
+export interface LoginResponse {
+  user: User;
+  created: boolean;
+}
+
+export interface SessionSummary {
+  sessionId: string;
+  topic: string;
+  language: Language | null;
+  pipeline: string | null;
+  phase: Phase | null;
+  status: Status | null;
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AdminSessionRow {
   sessionId: string;
   topic: string;
   createdAt: number;
   updatedAt: number;
   pipeline: string | null;
+  userId: string | null;
+  userName: string | null;
   phase: Phase | null;
   messageCount: number;
   eventCount: number;
@@ -215,6 +240,12 @@ export interface StateVersion {
   turnNumber: number | null;
   state: KnowledgeState;
   changes: StateChange[];
+  createdAt: number;
+}
+
+export interface User {
+  userId: string;
+  name: string;
   createdAt: number;
 }
 

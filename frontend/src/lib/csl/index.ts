@@ -1,6 +1,16 @@
 export * from "./protocol";
 export { applyEvent } from "./reducer";
-export { API_URL, createSession, fetchHealth, fetchSession, sessionSocketUrl } from "./api";
+export {
+  API_URL,
+  ApiError,
+  createSession,
+  fetchHealth,
+  fetchSession,
+  fetchUserSessions,
+  sessionSocketUrl,
+  signIn,
+} from "./api";
+export { getCurrentUser, signOut, useCurrentUser } from "./currentUser";
 export {
   forgetSession,
   rememberSession,

@@ -4,6 +4,7 @@
     GET  /api/sessions/{id}            current snapshot
     WS   /ws/sessions/{id}             live events (server -> client) and commands (client -> server)
     GET  /api/health
+    /api/users/*                       nickname login and a user's sessions (see app/users.py)
     /api/admin/*                       admin page API, needs ADMIN_TOKEN (see app/admin.py)
 
 Run with exactly one worker: sessions live in this process's memory.
@@ -31,6 +32,7 @@ from .orchestrator import Connection, SessionRegistry
 from .pipeline import FREE_PIPELINES, SESSION_PIPELINES, Pipeline, load_pipeline
 from .protocol import CLIENT_COMMANDS, CreateSessionRequest, CreateSessionResponse, ErrorEvent, Health
 from .store import Store
+from .users import users_router
 
 log = logging.getLogger("csl")
 MAX_COMMAND_BYTES = 32_000
@@ -105,8 +107,12 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[Pipeline]
             raise HTTPException(503, "The server is busy. Try again in a few minutes.")
         if not body.topic.strip():
             raise HTTPException(422, "Topic must not be empty.")
+        # A signed-in learner: the session is recorded as theirs and shows up in their list.
+        user_id = (body.user_id or "").strip() or None
+        if user_id and await app.state.store.get_user(user_id) is None:
+            raise HTTPException(404, "Unknown user. Sign in again.")
         try:
-            runner = registry().create(body.topic, body.language, wanted)
+            runner = registry().create(body.topic, body.language, wanted, user_id)
         except Exception as exc:  # a registered pipeline that cannot be imported or constructed
             log.error("pipeline %r could not be loaded: %r", wanted, exc, exc_info=exc)
             detail = f" ({exc!r})" if settings.debug else ""
@@ -122,6 +128,7 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[Pipeline]
         return runner.session.snapshot().wire()
 
     app.include_router(admin_router(settings))
+    app.include_router(users_router())
 
     @app.websocket("/ws/sessions/{session_id}")
     async def session_socket(websocket: WebSocket, session_id: str) -> None:

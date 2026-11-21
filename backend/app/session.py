@@ -44,6 +44,8 @@ class Session:
         self.turn_limit = turn_limit
         # Name of the pipeline running this session (set by the registry; see SessionRegistry.pipeline_for).
         self.pipeline = ""
+        # The signed-in learner who created the session (users.id), or None for a session without a user.
+        self.user_id: Optional[str] = None
         self.phase: Phase = "init"
         self.status: Status = "running"
         self.pace = Pace()
@@ -110,6 +112,7 @@ class Session:
             topic=self.topic,
             language=self.language,
             pipeline=self.pipeline,
+            user_id=self.user_id,
             phase=self.phase,
             status=self.status,
             pace=self.pace,
@@ -137,6 +140,7 @@ class Session:
         snap = SessionSnapshot.model_validate(payload["snapshot"])
         s = cls(snap.session_id, snap.topic, snap.language, snap.turn_limit)
         s.pipeline = snap.pipeline
+        s.user_id = snap.user_id
         s.phase = snap.phase
         s.status = snap.status
         s.pace = snap.pace

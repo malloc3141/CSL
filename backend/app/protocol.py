@@ -144,6 +144,8 @@ class SessionSnapshot(Wire):
     # Name of the pipeline that runs this session: the server's PIPELINE, or the one the session
     # asked for (CreateSessionRequest.pipeline). "" for sessions stored before this field existed.
     pipeline: str = ""
+    # The signed-in learner who created the session (User.user_id); None for a session without a user.
+    user_id: Optional[str] = None
     phase: Phase
     status: Status
     pace: Pace
@@ -285,6 +287,9 @@ class CreateSessionRequest(Wire):
     # Health.session_pipelines (registered in app/pipeline/__init__.py). "mock" is the scripted
     # scenario: no LLM, no cost, no access code needed. None: the server's PIPELINE.
     pipeline: Optional[str] = Field(default=None, max_length=64)
+    # The signed-in learner (User.user_id from POST /api/users/login). The session is recorded as
+    # theirs and listed by GET /api/users/{userId}/sessions. None: a session without a user.
+    user_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class CreateSessionResponse(Wire):
@@ -306,6 +311,43 @@ class Health(Wire):
     protocol_version: int = PROTOCOL_VERSION
 
 
+# --------------------------------------------------------------------------- users (nickname login)
+# See app/users.py. A nickname is the whole login: it identifies a learner and finds their sessions
+# again. There is no password and this is not access control.
+
+
+class User(Wire):
+    user_id: str
+    # As first typed (trimmed). "Minsu" and "minsu" are the same user.
+    name: str
+    created_at: float
+
+
+class LoginRequest(Wire):
+    name: str = Field(min_length=1, max_length=64)
+
+
+class LoginResponse(Wire):
+    user: User
+    # True if the nickname was new and the user was created by this call.
+    created: bool
+
+
+class SessionSummary(Wire):
+    """One row of a user's session list (GET /api/users/{userId}/sessions)."""
+
+    session_id: str
+    topic: str
+    language: Optional[Language] = None
+    pipeline: Optional[str] = None
+    phase: Optional[Phase] = None
+    status: Optional[Status] = None
+    message_count: int = 0
+    created_at: float
+    # Last time the session was saved (any change to it).
+    updated_at: float
+
+
 # --------------------------------------------------------------------------- admin REST
 # Everything under /api/admin needs "Authorization: Bearer <ADMIN_TOKEN>".
 
@@ -316,6 +358,9 @@ class AdminSessionRow(Wire):
     created_at: float
     updated_at: float
     pipeline: Optional[str] = None
+    # The learner who created the session, if they were signed in.
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
     phase: Optional[Phase] = None
     message_count: int = 0
     event_count: int = 0
@@ -413,6 +458,9 @@ REST_MODELS: list[type[Wire]] = [
     CreateSessionRequest,
     CreateSessionResponse,
     Health,
+    LoginRequest,
+    LoginResponse,
+    SessionSummary,
     AdminSessionRow,
     AdminSessionDetail,
     UsageReport,

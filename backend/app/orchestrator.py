@@ -233,7 +233,7 @@ class SessionRunner:
 
     def _save(self) -> None:
         s = self.session
-        self.store.save_session(s.id, s.topic, s.created_at, s.dump())
+        self.store.save_session(s.id, s.topic, s.created_at, s.dump(), s.user_id)
 
     # ------------------------------------------------------------------ state helpers
 
@@ -759,14 +759,20 @@ class SessionRegistry:
             self._named[name] = pipeline
         return pipeline
 
-    def create(self, topic: str, language: Language, pipeline: Optional[str] = None) -> SessionRunner:
+    def create(
+        self, topic: str, language: Language, pipeline: Optional[str] = None, user_id: Optional[str] = None
+    ) -> SessionRunner:
         chosen = self.pipeline_for(pipeline)
         session = Session(new_id(), topic.strip(), language, self.settings.max_turns)
         session.pipeline = pipeline or self.pipeline.name
+        session.user_id = user_id
         runner = SessionRunner(session, chosen, self.store, self.settings)
         self.runners[session.id] = runner
-        runner.emit("session.created", {"topic": session.topic, "language": language, "pipeline": session.pipeline},
-                    broadcast=False)
+        runner.emit(
+            "session.created",
+            {"topic": session.topic, "language": language, "pipeline": session.pipeline, "userId": user_id},
+            broadcast=False,
+        )
         runner._save()
         runner.start()
         return runner

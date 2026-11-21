@@ -1,7 +1,8 @@
-"""SQLite persistence: an append-only event log plus the latest session snapshot.
+"""SQLite persistence: an append-only event log, the latest session snapshot, and the users.
 
 The event log is what you analyse after the deployment (who did what, when).
 The snapshot is what lets a session survive a server restart.
+`users` holds the nicknames learners sign in with; `sessions.user_id` says whose a session is.
 Writes are queued and flushed by one background task so that the event loop
 never waits on disk.
 """
@@ -21,7 +22,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     topic TEXT NOT NULL,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
-    payload TEXT NOT NULL
+    payload TEXT NOT NULL,
+    user_id TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
     session_id TEXT NOT NULL,
@@ -35,6 +37,13 @@ CREATE INDEX IF NOT EXISTS events_type ON events (type);
 CREATE TABLE IF NOT EXISTS config (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL UNIQUE,
+    created_at REAL NOT NULL,
+    last_login_at REAL NOT NULL
 );
 """
 
@@ -53,6 +62,10 @@ class Store:
         self._db = sqlite3.connect(self.path, check_same_thread=False)
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(SCHEMA)
+        # Databases created before users existed: add the column (existing rows keep NULL = no user).
+        if "user_id" not in {row[1] for row in self._db.execute("PRAGMA table_info(sessions)")}:
+            self._db.execute("ALTER TABLE sessions ADD COLUMN user_id TEXT")
+        self._db.execute("CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id)")
         self._db.commit()
         self._task = asyncio.create_task(self._writer(), name="store-writer")
 
@@ -75,8 +88,10 @@ class Store:
             ("event", (session_id, seq, ts, type_, json.dumps(data, ensure_ascii=False, default=str)))
         )
 
-    def save_session(self, session_id: str, topic: str, created_at: float, payload: str) -> None:
-        self._queue.put_nowait(("session", (session_id, topic, created_at, time.time(), payload)))
+    def save_session(
+        self, session_id: str, topic: str, created_at: float, payload: str, user_id: Optional[str] = None
+    ) -> None:
+        self._queue.put_nowait(("session", (session_id, topic, created_at, time.time(), payload, user_id)))
 
     async def flush(self) -> None:
         await self._queue.join()
@@ -106,7 +121,8 @@ class Store:
                     )
                 else:
                     self._db.execute(
-                        "INSERT INTO sessions (id, topic, created_at, updated_at, payload) VALUES (?,?,?,?,?) "
+                        "INSERT INTO sessions (id, topic, created_at, updated_at, payload, user_id) "
+                        "VALUES (?,?,?,?,?,?) "
                         "ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at, payload=excluded.payload",
                         row,
                     )
@@ -132,8 +148,9 @@ class Store:
             "(SELECT COUNT(*) FROM events e WHERE e.session_id = s.id), "
             "json_extract(s.payload, '$.snapshot.phase'), "
             "json_extract(s.payload, '$.snapshot.pipeline'), "
-            "json_array_length(s.payload, '$.snapshot.messages') "
-            "FROM sessions s ORDER BY s.created_at DESC",
+            "json_array_length(s.payload, '$.snapshot.messages'), "
+            "s.user_id, u.name "
+            "FROM sessions s LEFT JOIN users u ON u.id = s.user_id ORDER BY s.created_at DESC",
         )
         return [
             {
@@ -145,6 +162,62 @@ class Store:
                 "phase": r[5],
                 "pipeline": r[6] or None,
                 "messageCount": r[7] or 0,
+                "userId": r[8],
+                "userName": r[9],
+            }
+            for r in rows
+        ]
+
+    # ------------------------------------------------------------------ users (nickname login)
+
+    def _login(self, user_id: str, name: str, key: str, now: float) -> tuple[tuple, bool]:
+        assert self._db is not None
+        with self._lock:
+            cursor = self._db.execute(
+                "INSERT OR IGNORE INTO users (id, name, name_key, created_at, last_login_at) VALUES (?,?,?,?,?)",
+                (user_id, name, key, now, now),
+            )
+            created = cursor.rowcount == 1
+            if not created:
+                self._db.execute("UPDATE users SET last_login_at = ? WHERE name_key = ?", (now, key))
+            row = self._db.execute("SELECT id, name, created_at FROM users WHERE name_key = ?", (key,)).fetchone()
+            self._db.commit()
+        return row, created
+
+    async def login_user(self, user_id: str, name: str, key: str) -> tuple[dict[str, Any], bool]:
+        """The user with this nickname key, created with `user_id` and `name` if the key is new."""
+        row, created = await asyncio.to_thread(self._login, user_id, name, key, time.time())
+        return {"userId": row[0], "name": row[1], "createdAt": row[2]}, created
+
+    async def get_user(self, user_id: str) -> Optional[dict[str, Any]]:
+        rows = await asyncio.to_thread(self._query, "SELECT id, name, created_at FROM users WHERE id = ?", (user_id,))
+        return {"userId": rows[0][0], "name": rows[0][1], "createdAt": rows[0][2]} if rows else None
+
+    async def list_user_sessions(self, user_id: str) -> list[dict[str, Any]]:
+        """Sessions of one user, newest first, with what a "continue" list needs."""
+        await self.flush()
+        rows = await asyncio.to_thread(
+            self._query,
+            "SELECT id, topic, created_at, updated_at, "
+            "json_extract(payload, '$.snapshot.language'), "
+            "json_extract(payload, '$.snapshot.pipeline'), "
+            "json_extract(payload, '$.snapshot.phase'), "
+            "json_extract(payload, '$.snapshot.status'), "
+            "json_array_length(payload, '$.snapshot.messages') "
+            "FROM sessions WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,),
+        )
+        return [
+            {
+                "sessionId": r[0],
+                "topic": r[1],
+                "createdAt": r[2],
+                "updatedAt": r[3],
+                "language": r[4],
+                "pipeline": r[5] or None,
+                "phase": r[6],
+                "status": r[7],
+                "messageCount": r[8] or 0,
             }
             for r in rows
         ]

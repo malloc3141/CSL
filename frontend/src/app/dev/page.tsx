@@ -9,14 +9,18 @@ import { Button, Composer, MessageBubble, ProfileImage, TextField } from "@/comm
 import {
   createSession,
   fetchHealth,
+  fetchUserSessions,
   forgetSession,
   rememberSession,
   setCurrentSessionId,
+  signIn,
+  signOut,
   useCslSession,
   useCurrentSessionId,
+  useCurrentUser,
   useRecentSessions,
 } from "@/lib/csl";
-import type { Accuracy, Health, Language, Role, StateVersion } from "@/lib/csl";
+import type { Accuracy, Health, Language, Role, SessionSummary, StateVersion } from "@/lib/csl";
 import { peerColor } from "@/styles/peerColors";
 
 const Page = styled.main`
@@ -36,6 +40,12 @@ const Card = styled.section`
   border: 1px solid ${({ theme }) => theme.colors.GRAY[200]};
   border-radius: ${({ theme }) => theme.round.md};
   background: ${({ theme }) => theme.colors.WHITE};
+`;
+
+const Side = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 `;
 
 const Row = styled.div`
@@ -173,6 +183,43 @@ function StartForm() {
   const [createError, setCreateError] = useState<string | null>(null);
   const recent = useRecentSessions();
 
+  // Signing in is optional on this page. Signed in, new sessions are recorded as the user's and the
+  // list of their sessions comes from the server (any browser); otherwise only this browser remembers.
+  const user = useCurrentUser();
+  const userId = user?.userId ?? null;
+  const [nickname, setNickname] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [mine, setMine] = useState<{ userId: string; sessions: SessionSummary[] } | null>(null);
+  const mySessions = mine && mine.userId === userId ? mine.sessions : null;
+
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+    fetchUserSessions(userId).then(
+      (sessions) => {
+        if (alive) setMine({ userId, sessions });
+      },
+      () => {}, // an unknown user is signed out by fetchUserSessions itself
+    );
+    return () => {
+      alive = false;
+    };
+  }, [userId]);
+
+  const login = async () => {
+    setSigningIn(true);
+    setLoginError(null);
+    try {
+      await signIn(nickname);
+      setNickname("");
+    } catch (cause) {
+      setLoginError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
   useEffect(() => {
     let alive = true;
     fetchHealth().then(
@@ -200,12 +247,15 @@ function StartForm() {
         pipeline: pipeline || null,
       });
       const { snapshot } = created;
-      rememberSession({
-        sessionId: created.sessionId,
-        topic: snapshot.topic,
-        pipeline: snapshot.pipeline,
-        createdAt: snapshot.createdAt,
-      });
+      // A signed-in user's session is in their list on the server; a guest's is remembered here.
+      if (!snapshot.userId) {
+        rememberSession({
+          sessionId: created.sessionId,
+          topic: snapshot.topic,
+          pipeline: snapshot.pipeline,
+          createdAt: snapshot.createdAt,
+        });
+      }
       setCurrentSessionId(created.sessionId);
     } catch (cause) {
       setCreateError(cause instanceof Error ? cause.message : String(cause));
@@ -263,10 +313,60 @@ function StartForm() {
         {createError ? <ErrorText>Could not create the session: {createError}</ErrorText> : null}
       </Card>
 
-      <div>
+      <Side>
+        <Card>
+          <Heading>Account</Heading>
+          {user ? (
+            <>
+              <Row>
+                <Meta style={{ flex: 1 }}>
+                  Signed in as <b>{user.name}</b>
+                </Meta>
+                <Button variant="ghost" onClick={signOut}>
+                  Sign out
+                </Button>
+              </Row>
+              <Meta>Sessions you start now are kept under this nickname and can be continued from any browser.</Meta>
+            </>
+          ) : (
+            <>
+              <TextField id="nickname" label="Nickname (optional on this page)" value={nickname} onChange={setNickname} />
+              <Row>
+                <Button onClick={login} disabled={signingIn || nickname.trim().length < 2}>
+                  {signingIn ? "Signing in…" : "Sign in"}
+                </Button>
+              </Row>
+              {loginError ? <ErrorText>Could not sign in: {loginError}</ErrorText> : null}
+              <Meta>
+                No password. A new nickname creates an account; a known one signs in to it. Without signing in, a
+                session is only remembered in this browser.
+              </Meta>
+            </>
+          )}
+        </Card>
+
+        {user && mySessions ? (
+          <Card>
+            <Heading>My sessions</Heading>
+            {mySessions.length === 0 ? <Meta>None yet. Start one on the left.</Meta> : null}
+            {mySessions.map((item) => (
+              <Row key={item.sessionId}>
+                <Meta style={{ flex: 1 }}>
+                  {item.topic} · {item.pipeline ?? "?"} · {item.phase}
+                  {item.phase === "discussion" ? ` (${item.status})` : ""} · {item.messageCount} messages ·{" "}
+                  {when(item.updatedAt)}
+                </Meta>
+                <Button variant="ghost" onClick={() => setCurrentSessionId(item.sessionId)}>
+                  {item.phase === "ended" ? "View" : "Resume"}
+                </Button>
+              </Row>
+            ))}
+          </Card>
+        ) : null}
+
         {recent.length > 0 ? (
           <Card>
-            <Heading>Sessions started in this browser</Heading>
+            <Heading>Sessions started in this browser (not signed in)</Heading>
             {recent.map((item) => (
               <Row key={item.sessionId}>
                 <Meta style={{ flex: 1 }}>
@@ -286,7 +386,7 @@ function StartForm() {
             </Meta>
           </Card>
         ) : null}
-      </div>
+      </Side>
     </Page>
   );
 }

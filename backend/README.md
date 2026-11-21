@@ -16,9 +16,10 @@ browser ── REST + WebSocket ──> FastAPI (one process)
 | `app/protocol.py` | Every message on the wire (Pydantic). Source of the frontend's TypeScript types. |
 | `app/orchestrator.py` | Session state machine: turn loop, reading-pace gate, prefetch, learner interruption, pause/resume, error recovery, restore after restart. |
 | `app/session.py` | In-memory state of one session, the snapshot sent to clients, dump/restore. What a pipeline reads. |
-| `app/store.py` | SQLite: append-only event log, latest snapshot per session, `config` table. |
+| `app/store.py` | SQLite: append-only event log, latest snapshot per session, `config` table, `users`. |
 | `app/config.py` | Every setting, with its default. |
 | `app/main.py` | REST + WebSocket endpoints, access code, rate limit. |
+| `app/users.py` | Nickname login and a user's session list. |
 | `app/admin.py` | Admin API for the frontend's `/admin` page: usage and cost, runtime model switch, session history, event export. |
 | `app/openrouter.py` | OpenRouter model list (prices) and key spend, for the admin page. |
 | `app/pipeline/base.py` | The interface the agent code implements. |
@@ -28,7 +29,7 @@ browser ── REST + WebSocket ──> FastAPI (one process)
 | `app/llm.py` | OpenRouter client: streaming, JSON calls, retries, per-call usage, cost and cache log, runtime model override. Sends the session id with every call so one session stays on one provider (prompt cache). |
 | `scripts/cli.py` | Run a session in the terminal, without server or frontend. |
 | `scripts/gen_ts.py` | Regenerate `frontend/src/lib/csl/protocol.ts` after changing `protocol.py`. |
-| `tests/` | 45 tests, no network: orchestrator, REST/WebSocket, baseline, csl and LLM client with fakes, admin API, per-session pipelines. |
+| `tests/` | 48 tests, no network: orchestrator, REST/WebSocket, baseline, csl and LLM client with fakes, admin API, per-session pipelines, users. |
 
 ## Run
 
@@ -79,6 +80,14 @@ The ones that matter in production:
 
 ## Things to know
 
+* **Users.** Login is a nickname, nothing else (`app/users.py`). `POST /api/users/login {name}` returns the
+  user, creating it if the nickname is new; case and extra spaces do not make a different user. A session
+  created with that `userId` is recorded as the user's (`sessions.user_id`), and
+  `GET /api/users/{userId}/sessions` lists them, so a learner who left midway finds the session again from
+  any browser. This identifies learners for the usage analysis; it is **not access control**: whoever knows
+  a nickname signs in as it, and a session still opens by its id alone. Sessions without a user remain
+  possible (`/dev` allows them; the product start page asks for a nickname first). The admin page shows the
+  user of each session. A database from before this feature gets the `user_id` column added at startup.
 * **One process only.** Sessions live in memory, so run a single uvicorn worker. A session whose client
   left is paused at once, dropped from memory after `SESSION_IDLE_MINUTES`, and restored from SQLite when
   the client comes back (also after a server restart).

@@ -25,9 +25,26 @@ development against the deployed server; leave `pipeline` out for the real agent
 the ones among them that need no access code). The agent developers use this to try their pipeline on the
 deployed server; `/dev` shows the list as the "Agents" selector.
 
-**Staying in a session without a login.** The session id is all a page has to remember: the server keeps
-every session and sends the full snapshot on connect. `src/lib/csl/browserSession.ts` keeps the id in the
-URL (`?session=<id>`) and a short list of this browser's sessions in localStorage:
+**Signing in.** Login is a nickname only (no password; it identifies the learner, it is not access control).
+`src/lib/csl` holds it:
+
+```tsx
+import { fetchUserSessions, signIn, signOut, useCurrentUser } from "@/lib/csl";
+
+const user = useCurrentUser();                   // undefined while hydrating, null = signed out, else { userId, name }
+await signIn("minsu");                           // a new nickname creates the user; remembered in this browser
+const mine = await fetchUserSessions(user.userId); // their sessions, newest first: topic, phase, status, messageCount, updatedAt
+signOut();
+```
+
+`createSession()` attaches the signed-in user by itself, so every session started while signed in is theirs
+and shows up in `fetchUserSessions` from any browser. `<LoginCard />` (`src/common/components`) is the
+sign-in form; `/mypage` lists the sessions and links to `/chat?session=<id>`; the start page shows the
+form until someone is signed in. `snapshot.userId` says whose a session is (null = nobody's).
+
+**Staying in a session.** The session id is all a page has to remember: the server keeps every session and
+sends the full snapshot on connect. `src/lib/csl/browserSession.ts` keeps the id in the URL
+(`?session=<id>`) and, for sessions without a user, a short list in localStorage:
 
 ```tsx
 import { rememberSession, setCurrentSessionId, useCslSession, useCurrentSessionId, useRecentSessions } from "@/lib/csl";
@@ -56,6 +73,7 @@ If the id in the URL does not exist, `connection` becomes `closed` and `snapshot
 | `pace` | `{ auto, speed }` |
 | `focus` | One line: what the session is built around |
 | `pipeline` | Which agents run the session: the server's default (e.g. `baseline`) or the name the session asked for (e.g. `mock`) |
+| `userId` | The signed-in learner who created the session, or null |
 
 | `actions` | Effect |
 | --- | --- |
@@ -92,9 +110,12 @@ REST (JSON, camelCase):
 
 | | |
 | --- | --- |
-| `POST /api/sessions` `{ topic, language?, accessCode?, pipeline? }` | → `{ sessionId, snapshot }`. `pipeline` is a name from `sessionPipelines`; `"mock"` needs no access code. 403 = wrong access code, 422 = unknown pipeline or empty topic, 429 / 503 = rate limit / server full |
+| `POST /api/sessions` `{ topic, language?, accessCode?, pipeline?, userId? }` | → `{ sessionId, snapshot }`. `pipeline` is a name from `sessionPipelines`; `"mock"` needs no access code. `userId` records the session as that user's. 403 = wrong access code, 404 = unknown user, 422 = unknown pipeline or empty topic, 429 / 503 = rate limit / server full |
 | `GET /api/sessions/{id}` | → snapshot (404 = no such session) |
 | `GET /api/health` | → `{ ok, pipeline, sessionPipelines, freePipelines, activeSessions, protocolVersion }` |
+| `POST /api/users/login` `{ name }` | → `{ user: { userId, name, createdAt }, created }`. 2 to 20 characters; 422 otherwise |
+| `GET /api/users/{userId}` | → user (404 = unknown) |
+| `GET /api/users/{userId}/sessions` | → `SessionSummary[]`, newest first |
 | `/api/admin/*` | admin page only (`src/app/admin`, client `src/lib/csl/admin.ts`); see `backend/README.md` |
 
 WebSocket `ws(s)://<host>/ws/sessions/{id}`. Close code 4404 = no such session, 4403 = origin not allowed.

@@ -18,6 +18,9 @@ Who works where, as of 2026-11-21. · 2026-11-21 기준, 누가 어디서 무엇
   `anthropic/claude-haiku-5.5`입니다.
 - 제품 UI: 시작 화면(`/`)과 교실 화면(`/chat`)이 만들어졌지만 **아직 백엔드에 연결되어 있지 않습니다**(고정
   데이터로 동작). 실제 세션을 돌려 볼 수 있는 곳은 `/dev`입니다.
+- 로그인: 닉네임만 입력합니다(비밀번호 없음). 로그인한 사용자가 만든 세션은 그 사용자의 것으로 기록되어,
+  중간에 나가도 어느 브라우저에서든 같은 닉네임으로 다시 찾아 이어갈 수 있습니다. 제품 시작 화면(`/`)은 로그인이
+  필수이고 `/dev`는 선택입니다.
 - 실서버에는 access code가 걸려 있습니다. 실제 LLM 세션을 만들 때 필요하고, mock 세션에는 필요 없습니다.
 - 일정: Studio 4 발표 2026-11-24, 보고서는 다음 날. 채점이 끝날 때까지 실서버가 동작해야 합니다.
 
@@ -26,7 +29,8 @@ Who works where, as of 2026-11-21. · 2026-11-21 기준, 누가 어디서 무엇
 | `/` | 제품 시작 화면 (주제 입력, 설정 단계) |
 | `/chat` | 제품 교실 화면 |
 | `/dev` | 실제 세션 전체를 돌려보는 페이지 (설정 대화 → 교실 → 토론 → knowledge state 패널). 파이프라인 선택 가능 |
-| `/admin` | LLM 사용량, 비용, 캐시 적중률, 모델 교체, 세션 기록과 이벤트 로그. admin token 필요 |
+| `/mypage` | 로그인, 내 세션 목록, 이어가기 |
+| `/admin` | LLM 사용량, 비용, 캐시 적중률, 모델 교체, 세션 기록(사용자 포함)과 이벤트 로그. admin token 필요 |
 
 ### 2. 공통: 실행과 배포
 
@@ -45,7 +49,7 @@ pnpm dev
 - 로컬 프론트엔드는 **로컬 백엔드**에 붙여야 합니다. 실서버 백엔드는 `https://csl.kimhm.in` 에서 온 요청만 받습니다.
 - 실제 모델로 돌리려면 `backend/.env.example`을 `backend/.env`로 복사하고 `PIPELINE`, `OPENROUTER_API_KEY`,
   `OPENROUTER_MODEL`을 채웁니다. `.env`는 커밋되지 않습니다. 키와 토큰을 추적되는 파일에 넣지 마세요.
-- `main`에 push하면 서버에서 `uv run pytest`(백엔드 45개)와 `pnpm build`(타입 검사 포함)를 먼저 돌립니다.
+- `main`에 push하면 서버에서 `uv run pytest`(백엔드 48개)와 `pnpm build`(타입 검사 포함)를 먼저 돌립니다.
   하나라도 실패하면 배포되지 않고 실서버는 그대로입니다. push 전에 로컬에서 두 명령을 돌려 보세요.
 - push가 곧 배포이므로, 브랜치에서 작업하고 통과한 뒤 `main`에 합치는 것을 권장합니다.
 - 배포는 코드만 바꿉니다. 서버의 `backend/.env`(기본 `PIPELINE`, 키, access code)는 Hyunmin이 직접 바꿉니다.
@@ -222,10 +226,16 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 **알아둘 것.**
 - `src/lib/csl/protocol.ts`는 생성되는 파일입니다. 손으로 고치지 마세요. 타입이 부족하면 Hyunmin에게 알려 주세요.
 - `/dev`와 `/admin`은 그대로 두세요. 배포 스크립트가 `/dev`의 200 응답을 확인합니다.
-- **로그인은 없습니다.** 세션 id만 기억하면 됩니다. 서버가 모든 세션을 보관하고 연결할 때마다 전체 snapshot을
-  보냅니다. `src/lib/csl`에 이미 도구가 있습니다: `useCurrentSessionId()`(URL의 `?session=<id>`),
-  `setCurrentSessionId(id | null)`(들어가기 / 나가기), `rememberSession()`과 `useRecentSessions()`(이 브라우저가
-  만든 세션 목록). 새로고침, 뒤로 가기, 링크 공유가 모두 같은 세션으로 돌아옵니다. 사용 예는 `/dev`와
+- **로그인은 닉네임만 받습니다.** `src/lib/csl`의 `useCurrentUser()`, `signIn(name)`, `signOut()`,
+  `fetchUserSessions(userId)`를 씁니다. `createSession()`은 로그인한 사용자를 알아서 붙이므로 따로 넘길 것이
+  없습니다. 이미 들어가 있는 것:
+  - `Navbar`의 프로필 버튼이 `/mypage`로 가고, 로그인하면 닉네임이 옆에 보입니다.
+  - `src/common/components/LoginCard.tsx`: 로그인 폼. `/`는 로그인 전에는 이 폼을 보여 줍니다(`page.tsx` 맨 위의
+    `if (!user)` 분기).
+  - `src/app/mypage/page.tsx`: 내 세션 목록. "Continue"는 `/chat?session=<id>&topic=<주제>`로 이동합니다.
+- **`/chat`이 `?session=<id>`를 읽어야 이어가기가 완성됩니다.** `useCurrentSessionId()`가 그 값을 돌려주고,
+  `useCslSession(id)`에 넘기면 서버가 그 세션의 전체 snapshot을 보냅니다(새로고침, 뒤로 가기, 링크 공유도 같은
+  세션으로 돌아옵니다). `/`에서 세션을 만든 뒤에도 같은 주소 형식으로 `/chat`에 넘기면 됩니다. 사용 예는 `/dev`와
   [PROTOCOL.md](backend/docs/PROTOCOL.md)에 있습니다.
 - 서버가 볼 수 없는 UI 동작은 `actions.track(name, data)`로 기록하세요(예: 패널 열기). Milestone 5의 사용 분석에 씁니다.
 - UI 문구는 영어가 기본입니다. 토론 언어는 세션을 만들 때 `language: "en" | "ko"`로 고릅니다.
@@ -256,7 +266,7 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 
 - Alex: `knowledge.py`의 실제 구현(설정 대화, 교실 구성, 상태 갱신). 상태 갱신이 중간에 멈추는 문제가 가장 급합니다(4절).
 - Seongho: 토론 다듬기. 브랜치 `seongho/cache-friendly-discussion`에 `main`에 없는 커밋이 하나 있습니다(`78a1244`).
-- Jeeyun: `/`와 `/chat`을 백엔드에 연결(7절)
+- Jeeyun: `/`와 `/chat`을 백엔드에 연결(7절). `/chat`이 `?session=<id>`를 읽으면 마이페이지의 이어가기가 동작합니다.
 - Hyunmin: 서버 기본값을 `csl`로 전환, 서버 재부팅 확인, 동시 사용자 확인, 보고서(URL, access code,
   라이브러리와 도구 목록, 스크린샷, System Architecture 탭)
 - 팀: 토론에서 학습자를 어떻게 부를지 정하기(지금 화면에는 "나", 프롬프트에는 "Learner")
@@ -275,6 +285,9 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   `anthropic/claude-haiku-5.5` as both models.
 - Product UI: the start page (`/`) and the classroom page (`/chat`) exist but are **not connected to the backend
   yet** (they run on fixed data). The place to run a real session is `/dev`.
+- Login: a nickname and nothing else (no password). Sessions created while signed in are recorded as that
+  user's, so a learner who leaves midway finds the session again with the same nickname, from any browser. The
+  product start page (`/`) requires it; `/dev` makes it optional.
 - The live server has an access code. Sessions on the real LLM need it; mock sessions do not.
 - Dates: Studio 4 presentation 2026-11-24, report the day after. The live server has to keep working until grading is done.
 
@@ -283,7 +296,8 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 | `/` | Product start page (topic, setup steps) |
 | `/chat` | Product classroom page |
 | `/dev` | Runs a whole real session (setup chat → classroom → discussion → knowledge-state panels). Lets you pick the pipeline |
-| `/admin` | LLM usage, cost, cache hit rate, model switch, session history and event log. Needs the admin token |
+| `/mypage` | Sign in, my sessions, continue one |
+| `/admin` | LLM usage, cost, cache hit rate, model switch, session history (with the user) and event log. Needs the admin token |
 
 ### 2. Everyone: run and deploy
 
@@ -302,7 +316,7 @@ pnpm dev
 - A local frontend has to talk to a **local backend**. The live backend only accepts requests from `https://csl.kimhm.in`.
 - For real models, copy `backend/.env.example` to `backend/.env` and fill in `PIPELINE`, `OPENROUTER_API_KEY` and
   `OPENROUTER_MODEL`. `.env` is not committed. Never put keys or tokens in a tracked file.
-- On a push to `main` the server first runs `uv run pytest` (45 backend tests) and `pnpm build` (includes the type
+- On a push to `main` the server first runs `uv run pytest` (48 backend tests) and `pnpm build` (includes the type
   check). If either fails, nothing is deployed and the live site stays as it was. Run both locally before pushing.
 - A push is a deploy, so working on a branch and merging into `main` once both pass is recommended.
 - A deploy only changes code. The server's `backend/.env` (default `PIPELINE`, keys, access code) is changed by
@@ -489,11 +503,17 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 **Good to know.**
 - `src/lib/csl/protocol.ts` is generated. Do not edit it by hand; if a type is missing, tell Hyunmin.
 - Leave `/dev` and `/admin` in place. The deploy script checks that `/dev` answers 200.
-- **There is no login.** The session id is all a page has to remember: the server keeps every session and sends
-  the full snapshot on every connect. The tools are already in `src/lib/csl`: `useCurrentSessionId()` (the
-  `?session=<id>` in the URL), `setCurrentSessionId(id | null)` (enter / leave), `rememberSession()` and
-  `useRecentSessions()` (the sessions this browser started). A reload, the back button and a shared link all return
-  to the same session. `/dev` and [PROTOCOL.md](backend/docs/PROTOCOL.md) show how to use them.
+- **Login takes a nickname only.** Use `useCurrentUser()`, `signIn(name)`, `signOut()` and
+  `fetchUserSessions(userId)` from `src/lib/csl`. `createSession()` attaches the signed-in user by itself, so
+  there is nothing to pass. Already in place:
+  - The profile button of `Navbar` goes to `/mypage` and shows the nickname once signed in.
+  - `src/common/components/LoginCard.tsx`: the sign-in form. `/` shows it until someone is signed in (the
+    `if (!user)` branch at the top of `page.tsx`).
+  - `src/app/mypage/page.tsx`: the list of my sessions. "Continue" goes to `/chat?session=<id>&topic=<topic>`.
+- **Continuing a session is complete once `/chat` reads `?session=<id>`.** `useCurrentSessionId()` returns it;
+  pass it to `useCslSession(id)` and the server sends that session's full snapshot (a reload, the back button and
+  a shared link return to the same session too). After creating a session on `/`, hand it to `/chat` in the same
+  URL form. `/dev` and [PROTOCOL.md](backend/docs/PROTOCOL.md) show how.
 - Log UI actions the server cannot see with `actions.track(name, data)` (opening a panel, for example). Milestone 5
   analyses usage from these.
 - UI text is English by default. The discussion language is chosen per session with `language: "en" | "ko"`.
@@ -526,7 +546,7 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   stops partway is the most urgent item (section 4).
 - Seongho: refining the discussion. The branch `seongho/cache-friendly-discussion` has one commit that is not on
   `main` (`78a1244`).
-- Jeeyun: connect `/` and `/chat` to the backend (section 7)
+- Jeeyun: connect `/` and `/chat` to the backend (section 7). Once `/chat` reads `?session=<id>`, "Continue" on My page works.
 - Hyunmin: switch the server's default to `csl`, reboot test, check with several simultaneous users, the report
   (URL, access code, list of libraries and tools, screenshots, the System Architecture tab)
 - Team: decide how the discussion refers to the learner (the screen shows "나" / "You", the prompt says "Learner")

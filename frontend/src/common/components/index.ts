@@ -7,5 +7,7 @@ export type { ParticipantKind } from "./ParticipantChip";
 export { ProfileImage } from "./ProfileImage";
 export { Stepper } from "./Stepper";
 export { TextField } from "./TextField";
+export { LoginCard } from "./LoginCard";
+export type { LoginCardProps } from "./LoginCard";
 export { Navbar } from "./Navbar";
 export type { NavbarProps } from "./Navbar";
