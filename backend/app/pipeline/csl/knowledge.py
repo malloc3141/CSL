@@ -19,6 +19,10 @@ log = logging.getLogger(__name__)
 _setup = BaselinePipeline()
 EXTRACTION_TIMEOUT_SECONDS = 8.0
 
+CLASSROOM_PEER_RULES = """- Give each peer one coherent mental model. Accurate and mistaken beliefs can coexist when they fit together. For the same circumstances, every belief, the card description, and the explanation must agree on what happens and why.
+- Write the explanation in the peer's own voice, showing how they think it works. Leave out any built-in rebuttal, counterexample, or hint at the correct answer that the peer would not infer from their own beliefs.
+- Leave open_questions empty unless the peer has a genuinely neutral question. Asking it should make sense to someone who holds these beliefs."""
+
 EXTRACTOR_ROLE = """ROLE: neutral situation reader.
 Identify what the exchange asks a participant to address, in one or two sentences in the discussion
 language. Use only the public topic and discussion. Preserve attribution, conditions, and uncertainty.
@@ -32,7 +36,11 @@ async def init_turn(session: Session, out: TextSink) -> InitResult:
 
 
 async def build_classroom(session: Session) -> Classroom:
-    return await _setup.build_classroom(session)
+    return await _setup.build_classroom(
+        session,
+        explanation="how this student currently thinks it works, in their own words, in 1-3 sentences",
+        peer_rules=CLASSROOM_PEER_RULES,
+    )
 
 
 async def prepare_peer_context(session: Session, peer_id: str, *, respond_to: int | None = None) -> str:
@@ -73,13 +81,12 @@ async def prepare_peer_context(session: Session, peer_id: str, *, respond_to: in
     return (
         f"{grounding}\nBeliefs:\n{beliefs}\nCurrent explanation: {state.explanation or '(none recorded)'}\n"
         f"Open questions:\n{questions}\n"
-        "Apply your understanding to the public exchange. You may hesitate, defend your belief, "
-        "or ask why someone disagrees. Introduce an alternative explanation only if it is already "
-        "in your understanding or someone explicitly offered it in the discussion. A question, "
-        "a summary of a question, or a repeated assertion supplies no new evidence by itself. "
-        "A counterexample can show your rule is insufficient. Describe what this case establishes "
-        "and leave the general procedure open unless someone has supplied it. For a new case, say "
-        "what you would conclude. For unsupported doubt, name your assumption and ask for evidence. "
-        "Use the text of your belief as your reason if that is all you have. Only describe an event "
+        "For this reply, speak from the beliefs and explanation above. Use them to make a prediction "
+        "or explain your reasoning. If a public observation is hard to reconcile, acknowledge what "
+        "was observed and ask how it fits. You can attribute a competing idea to its speaker. "
+        "Only express a changed view as your own if your current understanding already supports "
+        "that specific change. If two of your recorded ideas pull in different directions, say what "
+        "you are unsure how to reconcile. Use the text of your belief as your reason if that is "
+        "all you have. Only describe an event "
         "or group practice if you can quote the words that establish it and attribute it to its source."
     )

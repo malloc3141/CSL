@@ -138,6 +138,32 @@ async def test_speech_preserves_who_reported_an_explicit_experience(session, str
     assert personal_history in tail and all(personal_history not in block["text"] for block in transcript)
 
 
+async def test_speech_uses_the_current_belief_after_a_challenge_and_each_state_update(session, stream):
+    challenge = "Could the repeated image represent a memory instead?"
+    session.transcript[-1].text = challenge
+    original = Belief(id="image-rule", text="The repeated image announces the next scene.", accuracy="incorrect")
+    unrelated = Belief(id="stanza-length", text="The stanzas alternate in length.")
+    revised = Belief(id=original.id, text="The image marks a return to an earlier scene.", accuracy="partial")
+    session.states["peer1"] = []
+    pipeline = CslPipeline()
+    for version, beliefs in enumerate(([original], [original, unrelated], [revised, unrelated])):
+        session.states["peer1"].append(StateVersion(
+            agent_id="peer1", version=version, state=KnowledgeState(beliefs=beliefs), created_at=version,
+        ))
+        await pipeline.speak(session, SpeakerDecision(agent_id="peer1"), SimpleNamespace(write=AsyncMock()))
+
+        request = stream.call_args.args[0]
+        transcript, tail = request[-1]["content"][:-1], request[-1]["content"][-1]["text"]
+        assert challenge in transcript[-1]["text"]
+        assert "An active belief is still yours" in request[0]["content"][1]["text"]
+        assert "speak from the beliefs and explanation above" in tail.lower()
+        for belief in (original, unrelated, revised):
+            assert (belief.text in tail) == (belief in beliefs)
+        assert "accuracy" not in tail and original.id not in tail
+        assert "PRIVATE-KEY" not in json.dumps(request)
+    assert stream.call_count == 3
+
+
 @pytest.mark.parametrize("state", [
     KnowledgeState(explanation="I follow the first two steps and lose track at the third."),
     KnowledgeState(open_questions=["Could the second voice be quoting the first?"]),

@@ -81,7 +81,7 @@ Schema:
       "origin": "short phrase: where this peer's thinking comes from, e.g. 'From your explanation' or 'From a common misconception'",
       "description": "one sentence for the peer's card: what this student thinks",
       "beliefs": [{{"text": "a fact this student accepts", "accuracy": "correct|partial|incorrect"}}],
-      "explanation": "this student's current explanation, 1-3 sentences, including what they cannot explain",
+      "explanation": "{explanation}",
       "explanation_accuracy": "correct|partial|incorrect",
       "open_questions": []
     }}
@@ -228,11 +228,18 @@ class BaselinePipeline:
 
     # ------------------------------------------------------------------ classroom
 
-    async def build_classroom(self, session: Session) -> Classroom:
+    async def build_classroom(
+        self, session: Session, *,
+        explanation: str = "this student's current explanation, 1-3 sentences, including what they cannot explain",
+        peer_rules: str = "",
+    ) -> Classroom:
         n = self.settings.peer_count
+        system = CLASSROOM_SYSTEM.format(n=n, lang=LANG[session.language], explanation=explanation)
+        if peer_rules:
+            system += "\n" + peer_rules
         data = await get_llm().complete_json(
             [
-                {"role": "system", "content": CLASSROOM_SYSTEM.format(n=n, lang=LANG[session.language])},
+                {"role": "system", "content": system},
                 {
                     "role": "user",
                     "content": f"Topic: {session.topic}\n\nSetup chat:\n{_render(session.init_transcript)}",
