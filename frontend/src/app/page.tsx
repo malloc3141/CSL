@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, CornerDownLeft } from "lucide-react";
@@ -24,7 +25,7 @@ import {
   useCurrentSessionId,
   useCurrentUser,
 } from "@/lib/csl";
-import type { Phase } from "@/lib/csl";
+import type { Language, Phase } from "@/lib/csl";
 
 const Screen = styled.div`
   display: flex;
@@ -180,11 +181,26 @@ const ErrorNote = styled.div`
   font-size: 14px;
 `;
 
+const LanguageField = styled.label`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  font-weight: 600;
+
+  select {
+    padding: 8px 12px;
+    border: 1px solid ${({ theme }) => theme.colors.GRAY[200]};
+    border-radius: ${({ theme }) => theme.round.sm};
+    background: ${({ theme }) => theme.colors.WHITE};
+    color: inherit;
+    font: inherit;
+  }
+`;
+
 const CodeField = styled.div`
   max-width: 320px;
 `;
-
-const STEPS = ["Initial question", "Learning direction", "Classroom setup"];
 
 const ACCESS_CODE_KEY = "csl.accessCode";
 
@@ -210,6 +226,7 @@ function rememberAccessCode(code: string) {
 //   Classroom setup    = "ready"     the participants; "Start learning session" opens /chat
 // The session id is kept in the URL (?session=<id>), so a reload returns to the same step.
 export default function Home() {
+  const { locale, t } = useI18n();
   const router = useRouter();
   const theme = useTheme();
   // Signing in comes first: every session started here belongs to a user (undefined = not known yet).
@@ -217,6 +234,7 @@ export default function Home() {
   const sessionId = useCurrentSessionId();
   const { snapshot, connection, error, actions } = useCslSession(sessionId ?? null);
   const [topic, setTopic] = useState("");
+  const [languageChoice, setLanguageChoice] = useState<{ sessionId: string; language: Language } | null>(null);
   const [draft, setDraft] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [needsCode, setNeedsCode] = useState(false);
@@ -263,7 +281,7 @@ export default function Home() {
         <Navbar />
         <Page>
           {user === null ? (
-            <LoginCard description="Enter a nickname to start a learning session. Your sessions are kept under it, so you can leave and continue later, from any browser." />
+            <LoginCard description={t("loginStart")} />
           ) : null}
         </Page>
       </Screen>
@@ -274,6 +292,9 @@ export default function Home() {
     if (next >= 0 && next <= phaseStep) setManual({ phase, step: next });
   };
 
+  const discussionLanguage = languageChoice && languageChoice.sessionId === sessionId
+    ? languageChoice.language
+    : snapshot?.language ?? locale;
   const shownTopic = snapshot?.topic ?? topic.trim();
   const missing = Boolean(sessionId) && !snapshot && connection === "closed";
   const opening = Boolean(sessionId) && !snapshot && !missing;
@@ -289,7 +310,7 @@ export default function Home() {
       // /?pipeline=mock runs the scripted scenario (free, no access code): for trying the UI.
       const pipeline = new URLSearchParams(window.location.search).get("pipeline");
       const code = accessCode.trim();
-      const created = await createSession({ topic: value, accessCode: code || null, pipeline: pipeline || null });
+      const created = await createSession({ topic: value, language: locale, accessCode: code || null, pipeline: pipeline || null });
       if (code) rememberAccessCode(code);
       setCurrentSessionId(created.sessionId);
     } catch (cause) {
@@ -308,7 +329,7 @@ export default function Home() {
             return {
               name: participant.name,
               peerIndex: participant.peerIndex ?? 0,
-              basis: participant.origin ?? "A way of thinking about this topic",
+              basis: participant.origin ?? t("peerBasis"),
               belief: initial ? `“${initial}”` : (participant.description ?? ""),
               note: participant.description ?? undefined,
             };
@@ -318,9 +339,9 @@ export default function Home() {
           .map((participant) => ({
             name: participant.name,
             peerIndex: null,
-            basis: "Discussion guidance and explanation checking",
-            belief: "“What evidence would help us test these explanations?”",
-            note: "Helps compare assumptions and evidence to build understanding.",
+            basis: t("tutorBasis"),
+            belief: t("tutorBelief"),
+            note: t("tutorNote"),
           })),
       ]
     : undefined;
@@ -329,7 +350,7 @@ export default function Home() {
     <ErrorNote role="alert">
       {error.message}
       <Button variant="ghost" onClick={actions.resume}>
-        Try again
+        {t("tryAgain")}
       </Button>
     </ErrorNote>
   ) : null;
@@ -342,12 +363,12 @@ export default function Home() {
       ? creating || !topic.trim()
       : phase === "init"
         ? connection !== "open"
-        : phase !== "ready";
+        : phase !== "ready" || connection !== "open";
   const next = () => {
     if (!atCurrent) return goTo(step + 1);
     if (!sessionId) return void start();
     if (phase === "init") return void actions.finishInit(); // skip the rest of the setup chat
-    if (phase === "ready") router.push(`/chat?session=${encodeURIComponent(sessionId)}`);
+    if (phase === "ready") actions.startDiscussion(discussionLanguage);
   };
 
   return (
@@ -356,21 +377,21 @@ export default function Home() {
       <Page>
         <Card>
           <Header>
-            <Title>Learning session preparation</Title>
+            <Title>{t("setupTitle")}</Title>
             <span>{step + 1} / 3</span>
           </Header>
           <Progress>
-            <Stepper steps={STEPS} current={step} onStepClick={goTo} />
+            <Stepper steps={[t("initialQuestion"), t("learningDirection"), t("classroomSetup")]} current={step} onStepClick={goTo} />
           </Progress>
           {missing ? (
             <ErrorNote role="alert">
-              This session could not be opened.
+              {t("openError")}
               <Button variant="ghost" onClick={() => setCurrentSessionId(null)}>
-                Start over
+                {t("startOver")}
               </Button>
             </ErrorNote>
           ) : opening ? (
-            <Loading role="status">Opening your session…</Loading>
+            <Loading role="status">{t("openingSession")}</Loading>
           ) : step === 0 ? (
             <>
               {sessionId ? null : (
@@ -383,15 +404,15 @@ export default function Home() {
                   >
                     <TextField
                       id="topic"
-                      label="Topic"
+                      label={t("topic")}
                       value={topic}
                       onChange={setTopic}
-                      placeholder="Enter a topic to learn"
+                      placeholder={t("topicPlaceholder")}
                     />
                     <Button
                       type="submit"
-                      aria-label="Enter topic"
-                      title="Enter topic"
+                      aria-label={t("enterTopic")}
+                      title={t("enterTopic")}
                       disabled={creating || !topic.trim()}
                     >
                       <CornerDownLeft size={20} aria-hidden="true" />
@@ -399,18 +420,18 @@ export default function Home() {
                   </TopicForm>
                   {needsCode ? (
                     <CodeField>
-                      <TextField id="access-code" label="Access code" value={accessCode} onChange={setAccessCode} />
+                      <TextField id="access-code" label={t("accessCode")} value={accessCode} onChange={setAccessCode} />
                     </CodeField>
                   ) : null}
-                  {creating ? <Loading role="status">Starting your session…</Loading> : null}
-                  {createError ? <ErrorNote role="alert">Could not start the session: {createError}</ErrorNote> : null}
+                  {creating ? <Loading role="status">{t("startingSession")}</Loading> : null}
+                  {createError ? <ErrorNote role="alert">{t("startError", { error: createError })}</ErrorNote> : null}
                 </>
               )}
               {sessionId ? (
-                <InitTranscript ref={transcript} role="region" aria-label="Initial question messages" tabIndex={0}>
+                <InitTranscript ref={transcript} role="region" aria-label={t("initialMessages")} tabIndex={0}>
                   {shownTopic ? (
                     <ChatLine $own>
-                      <MessageBubble role="user" speaker="You">
+                      <MessageBubble role="user" speaker={t("you")}>
                         {shownTopic}
                       </MessageBubble>
                     </ChatLine>
@@ -420,7 +441,7 @@ export default function Home() {
                     return (
                       <ChatLine key={message.id} $own={own}>
                         {own ? null : <ProfileImage color={theme.colors.BLUE[900]} />}
-                        <MessageBubble role={own ? "user" : "system"} speaker={own ? "You" : message.speakerName}>
+                        <MessageBubble role={own ? "user" : "system"} speaker={own ? t("you") : message.speakerName}>
                           {message.text}
                         </MessageBubble>
                       </ChatLine>
@@ -441,7 +462,7 @@ export default function Home() {
                 <Composer
                   value={draft}
                   onChange={setDraft}
-                  placeholder="Reply to the guide…"
+                  placeholder={t("replyGuide")}
                   disabled={phase !== "init" || connection !== "open"}
                   onSubmit={() => {
                     actions.replyInit(draft.trim());
@@ -451,33 +472,48 @@ export default function Home() {
               ) : null}
             </>
           ) : step === 2 ? (
-            <ClassroomOverview topic={shownTopic || "your topic"} participants={overview} />
+            <>
+              <ClassroomOverview topic={shownTopic || t("defaultTopic")} participants={overview} />
+              {sessionId ? (
+                <LanguageField>
+                  {t("discussionLanguage")}
+                  <select
+                    value={discussionLanguage}
+                    onChange={(event) => setLanguageChoice({
+                      sessionId,
+                      language: event.target.value === "ko" ? "ko" : "en",
+                    })}
+                  >
+                    <option value="en">{t("english")}</option>
+                    <option value="ko">{t("korean")}</option>
+                  </select>
+                </LanguageField>
+              ) : null}
+            </>
           ) : (
             <div>
               <h2>{shownTopic}</h2>
               <Direction>
-                Learning direction:{" "}
-                {snapshot?.focus ??
-                  `explore ${shownTopic || "your topic"} through explanations, questions, and discussion with your classroom.`}
+                {t("learningDirection")}: {snapshot?.focus ?? t("defaultDirection", { topic: shownTopic || t("defaultTopic") })}
               </Direction>
               {phase === "building" ? (
-                (problem ?? <Loading role="status">Preparing your classroom…</Loading>)
+                (problem ?? <Loading role="status">{t("preparingClassroom")}</Loading>)
               ) : (
-                <Direction role="status">Your classroom is ready.</Direction>
+                <Direction role="status">{t("classroomReady")}</Direction>
               )}
             </div>
           )}
           <Actions>
             <Button variant="ghost" disabled={step === 0} onClick={() => goTo(step - 1)}>
               <ArrowLeft size={16} aria-hidden="true" />
-              Back
+              {t("back")}
             </Button>
             <Button
               disabled={nextDisabled}
-              title={atCurrent && phase === "init" ? "Skip the rest of the setup chat" : undefined}
+              title={atCurrent && phase === "init" ? t("skipSetup") : undefined}
               onClick={next}
             >
-              {step >= 2 ? "Start learning session" : "Next"}
+              {step >= 2 ? t("startLearning") : t("next")}
               <ArrowRight size={16} aria-hidden="true" />
             </Button>
           </Actions>

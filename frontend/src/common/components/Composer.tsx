@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/i18n";
 import styled from "styled-components";
 import { SendHorizontal } from "lucide-react";
 
@@ -70,6 +71,7 @@ export function Composer({
   placeholder = "Join the discussion...",
   disabled = false,
 }: ComposerProps) {
+  const { t } = useI18n();
   return (
     <Form
       onSubmit={(event) => {
@@ -84,7 +86,7 @@ export function Composer({
         aria-label={placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
-      <Send type="submit" aria-label="Send message" title="Send message" disabled={disabled || !value.trim()}>
+      <Send type="submit" aria-label={t("send")} title={t("send")} disabled={disabled || !value.trim()}>
         <SendHorizontal size={20} aria-hidden="true" />
       </Send>
     </Form>

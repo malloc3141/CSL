@@ -168,6 +168,7 @@ class SessionSnapshot(Wire):
 
 class PhaseChanged(Wire):
     phase: Phase
+    language: Optional[Language] = None
     # "completed" | "turn_limit" | "user" when phase == "ended"
     reason: Optional[str] = None
 
@@ -243,6 +244,10 @@ class TextInput(Wire):
     text: str = Field(max_length=8000)
 
 
+class StartDiscussion(Wire):
+    language: Optional[Language] = None
+
+
 class UserMessage(Wire):
     text: str = Field(max_length=8000)
     client_message_id: Optional[str] = Field(default=None, max_length=64)
@@ -264,7 +269,7 @@ class UiEvent(Wire):
 CLIENT_COMMANDS: dict[str, type[Wire]] = {
     "init.reply": TextInput,
     "init.finish": Empty,
-    "discussion.start": Empty,
+    "discussion.start": StartDiscussion,
     "user.message": UserMessage,
     "control.pause": Empty,
     "control.resume": Empty,

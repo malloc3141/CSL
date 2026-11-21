@@ -32,6 +32,7 @@ export interface SessionSnapshot {
 
 export interface PhaseChanged {
   phase: Phase;
+  language: Language | null;
   reason: string | null;
 }
 
@@ -91,6 +92,10 @@ export type Empty = Record<string, never>;
 
 export interface TextInput {
   text: string;
+}
+
+export interface StartDiscussion {
+  language?: Language | null;
 }
 
 export interface UserMessage {
@@ -318,7 +323,7 @@ export type ServerEvent =
 export type ClientCommand =
   | { type: "init.reply"; data: TextInput }
   | { type: "init.finish"; data?: Empty }
-  | { type: "discussion.start"; data?: Empty }
+  | { type: "discussion.start"; data: StartDiscussion }
   | { type: "user.message"; data: UserMessage }
   | { type: "control.pause"; data?: Empty }
   | { type: "control.resume"; data?: Empty }

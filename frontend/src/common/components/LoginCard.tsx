@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/i18n";
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import styled from "styled-components";
@@ -58,10 +59,11 @@ export type LoginCardProps = {
  * that user (see backend/app/users.py).
  */
 export function LoginCard({
-  title = "Sign in",
-  description = "Enter a nickname. Your sessions are kept under it, so you can leave and continue later, from any browser.",
+  title,
+  description,
   onSignedIn,
 }: LoginCardProps) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,15 +85,15 @@ export function LoginCard({
         }
       }}
     >
-      <Title>{title}</Title>
-      <Description>{description}</Description>
-      <TextField id="nickname" label="Nickname" value={name} onChange={setName} placeholder="2 to 20 characters" />
+      <Title>{title ?? t("signIn")}</Title>
+      <Description>{description ?? t("loginDefault")}</Description>
+      <TextField id="nickname" label={t("nickname")} value={name} onChange={setName} placeholder={t("nicknameLength")} />
       {error ? <ErrorText role="alert">{error}</ErrorText> : null}
       <Button type="submit" disabled={!ready || busy}>
-        {busy ? "Signing in…" : "Continue"}
+        {busy ? t("signingIn") : t("continue")}
         {busy ? null : <ArrowRight size={16} aria-hidden="true" />}
       </Button>
-      <Description>No password. Use the same nickname next time to find your sessions again.</Description>
+      <Description>{t("noPassword")}</Description>
     </Card>
   );
 }

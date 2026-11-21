@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/i18n";
 import styled from "styled-components";
 
 const List = styled.ol<{ $count: number }>`
@@ -56,8 +57,9 @@ type StepperProps = {
 };
 
 export function Stepper({ steps, current, onStepClick }: StepperProps) {
+  const { t } = useI18n();
   return (
-    <List $count={steps.length} aria-label="Setup progress">
+    <List $count={steps.length} aria-label={t("setupProgress")}>
       {steps.map((step, index) => (
         <Item key={step}>
           <StepButton

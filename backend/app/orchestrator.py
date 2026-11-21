@@ -246,7 +246,7 @@ class SessionRunner:
         if phase == "ended":
             s.active_turn = None
             s.invited_turn_id = None
-        self.emit("phase.changed", PhaseChanged(phase=phase, reason=reason))
+        self.emit("phase.changed", PhaseChanged(phase=phase, reason=reason, language=s.language))
         if phase == "discussion":
             self.emit("status.changed", StatusChanged(status=s.status))
         self._save()
@@ -516,6 +516,8 @@ class SessionRunner:
         while s.phase == "ready":
             ctype, data = await self.inbox.get()
             if ctype == "discussion.start":
+                if data.language is not None:
+                    s.language = data.language
                 self._set_phase("discussion")
             else:
                 await self._handle_common(ctype, data)

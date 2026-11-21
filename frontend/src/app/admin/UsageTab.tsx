@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/i18n";
 import { useCallback } from "react";
 import styled from "styled-components";
 import { Button } from "@/common/components";
@@ -38,26 +39,27 @@ const Bar = styled.div<{ $ratio: number }>`
 `;
 
 function BucketTable({ title, keyLabel, buckets }: { title: string; keyLabel: string; buckets: UsageBucket[] }) {
+  const { t } = useI18n();
   return (
     <Card>
       <Heading>{title}</Heading>
       {buckets.length === 0 ? (
-        <Meta>No LLM calls recorded.</Meta>
+        <Meta>{t("noLlmCalls")}</Meta>
       ) : (
         <TableWrap>
           <Table>
             <thead>
               <tr>
                 <th>{keyLabel}</th>
-                <th className="num">Calls</th>
-                <th className="num">Errors</th>
-                <th className="num">Input tokens</th>
-                <th className="num">Cached input</th>
-                <th className="num">Cache hit rate</th>
-                <th className="num">Output tokens</th>
-                <th className="num">Reasoning tokens</th>
-                <th className="num">Avg latency</th>
-                <th className="num">Cost</th>
+                <th className="num">{t("calls")}</th>
+                <th className="num">{t("errors")}</th>
+                <th className="num">{t("inputTokens")}</th>
+                <th className="num">{t("cachedInput")}</th>
+                <th className="num">{t("cacheHit")}</th>
+                <th className="num">{t("outputTokens")}</th>
+                <th className="num">{t("reasoningTokens")}</th>
+                <th className="num">{t("averageLatency")}</th>
+                <th className="num">{t("cost")}</th>
               </tr>
             </thead>
             <tbody>
@@ -87,6 +89,7 @@ function BucketTable({ title, keyLabel, buckets }: { title: string; keyLabel: st
 }
 
 export function UsageTab({ token, apiKeySet }: { token: string; apiKeySet: boolean }) {
+  const { t } = useI18n();
   const fetcher = useCallback(() => Promise.all([adminApi.usage(token), adminApi.sessions(token)]), [token]);
   const { data, error, loading, reload } = useAdminLoad(fetcher);
   const report: UsageReport | null = data?.[0] ?? null;
@@ -101,90 +104,86 @@ export function UsageTab({ token, apiKeySet }: { token: string; apiKeySet: boole
     <>
       <Row>
         <Button variant="ghost" onClick={reload} disabled={loading}>
-          {loading ? "Loading…" : "Refresh"}
+          {loading ? t("loading") : t("refresh")}
         </Button>
         {error ? <ErrorText>{error}</ErrorText> : null}
       </Row>
 
       <Card>
-        <Heading>OpenRouter key spend (what is actually billed)</Heading>
+        <Heading>{t("openRouterSpend")}</Heading>
         {!apiKeySet ? (
-          <Meta>OPENROUTER_API_KEY is not set on the server.</Meta>
+          <Meta>{t("noApiKey")}</Meta>
         ) : report?.openrouterError ? (
-          <ErrorText>Could not get the key info from OpenRouter: {report.openrouterError}</ErrorText>
+          <ErrorText>{t("keyInfoError")} {report.openrouterError}</ErrorText>
         ) : key ? (
           <>
             <Grid>
-              <Stat label="Total spent" value={usd(key.usage)} hint={key.label ?? undefined} />
-              <Stat label="Today" value={usd(key.usageDaily)} />
-              <Stat label="This week" value={usd(key.usageWeekly)} />
-              <Stat label="This month" value={usd(key.usageMonthly)} />
+              <Stat label={t("totalSpent")} value={usd(key.usage)} hint={key.label ?? undefined} />
+              <Stat label={t("today")} value={usd(key.usageDaily)} />
+              <Stat label={t("week")} value={usd(key.usageWeekly)} />
+              <Stat label={t("month")} value={usd(key.usageMonthly)} />
               <Stat
-                label="Key limit / remaining"
-                value={key.limit == null ? "No limit" : usd(key.limitRemaining)}
-                hint={key.limit == null ? "A per-key limit can be set on OpenRouter" : `Limit ${usd(key.limit)}`}
+                label={t("keyLimit")}
+                value={key.limit == null ? t("noLimit") : usd(key.limitRemaining)}
+                hint={key.limit == null ? t("keyLimitHint") : t("limitAmount", { amount: usd(key.limit) })}
               />
             </Grid>
             {key.limit ? <Bar $ratio={key.usage / key.limit} /> : null}
-            <Meta>Counted by OpenRouter: includes spend from anywhere else this key is used, and may lag a few minutes.</Meta>
+            <Meta>{t("spendNote")}</Meta>
           </>
         ) : (
-          <Meta>Loading…</Meta>
+          <Meta>{t("loading")}</Meta>
         )}
       </Card>
 
       {total ? (
         <Card>
-          <Heading>LLM calls from this server (event log)</Heading>
+          <Heading>{t("serverLlmCalls")}</Heading>
           <Grid>
-            <Stat label="Calls" value={int(total.calls)} hint={total.errors ? `${int(total.errors)} errors` : undefined} />
-            <Stat label="Input tokens" value={int(total.promptTokens)} />
+            <Stat label={t("calls")} value={int(total.calls)} hint={total.errors ? t("errorCount", { count: int(total.errors) }) : undefined} />
+            <Stat label={t("inputTokens")} value={int(total.promptTokens)} />
             <Stat
-              label="Cache hit rate"
+              label={t("cacheHit")}
               value={percent(total.cacheHitRate)}
               hint={
                 total.cacheMeasuredTokens
                   ? `${int(total.cachedTokens)} of ${int(total.cacheMeasuredTokens)} input tokens read from cache` +
                     (total.cacheWriteTokens ? `, ${int(total.cacheWriteTokens)} written` : "")
-                  : "No call has reported cache figures yet"
+                  : t("noCacheData")
               }
             />
             <Stat
-              label="Output tokens"
+              label={t("outputTokens")}
               value={int(total.completionTokens)}
-              hint={total.reasoningTokens ? `incl. ${int(total.reasoningTokens)} reasoning` : undefined}
+              hint={total.reasoningTokens ? t("includedReasoning", { count: int(total.reasoningTokens) }) : undefined}
             />
-            <Stat label="Cost" value={usd(total.cost, total.estimated)} />
+            <Stat label={t("cost")} value={usd(total.cost, total.estimated)} />
             <Stat
-              label="Average per LLM session"
+              label={t("averageSession")}
               value={perSession == null ? "–" : usd(perSession, total.estimated)}
-              hint={`${withLlm.length} sessions`}
+              hint={t("sessionCount", { count: withLlm.length })}
             />
-            <Stat label="Avg latency" value={`${total.avgSeconds.toFixed(1)}s`} />
+            <Stat label={t("averageLatency")} value={`${total.avgSeconds.toFixed(1)}s`} />
           </Grid>
           {total.estimated || total.unpricedCalls ? (
             <Notice>
-              ≈ marks costs estimated from list prices for calls where OpenRouter reported no cost.
-              {total.unpricedCalls ? ` ${total.unpricedCalls} calls with an unknown price are left out.` : ""}
+              {t("estimatedCost")}
+              {total.unpricedCalls ? ` ${t("unknownPriceCount", { count: total.unpricedCalls })}` : ""}
             </Notice>
           ) : null}
           <Meta>
-            Cache hit rate: input tokens read from the provider&apos;s prompt cache, divided by the input tokens of
-            the calls that reported a cache figure (older calls, logged before this was recorded, are left out). Some providers, Anthropic among them, cache
-            only when the request asks for it (cache_control). The csl pipeline&apos;s discussion calls do; the
-            baseline, and with it csl&apos;s state updates, does not, so those calls show 0%.
+            {t("cacheHitNote")}
           </Meta>
           <Meta>
-            Turns cancelled midway (prefetched turns dropped when the learner interjects) report no tokens
-            and are missing here. For the exact amount, use the OpenRouter key spend above.
+            {t("cancelledCalls")}
           </Meta>
         </Card>
       ) : null}
 
       {report ? (
         <>
-          <BucketTable title="By model" keyLabel="Model" buckets={report.byModel} />
-          <BucketTable title="By day" keyLabel="Day" buckets={report.byDay} />
+          <BucketTable title={t("byModel")} keyLabel={t("model")} buckets={report.byModel} />
+          <BucketTable title={t("byDay")} keyLabel={t("day")} buckets={report.byDay} />
         </>
       ) : null}
     </>

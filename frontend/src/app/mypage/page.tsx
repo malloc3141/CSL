@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/i18n";
 // My page: who is signed in, and their sessions, to continue one that was left midway.
 // Sessions come from the server (GET /api/users/{id}/sessions), so the list is the same in every browser.
 
@@ -9,7 +10,7 @@ import { ArrowRight, Plus } from "lucide-react";
 import styled, { useTheme } from "styled-components";
 import { Button, LoginCard, Navbar, ProfileImage } from "@/common/components";
 import { fetchUserSessions, signOut, useCurrentUser } from "@/lib/csl";
-import type { Phase, SessionSummary } from "@/lib/csl";
+import type { SessionSummary } from "@/lib/csl";
 
 const Screen = styled.div`
   display: flex;
@@ -143,16 +144,16 @@ const Actions = styled.div`
   }
 `;
 
-const PHASE_LABEL: Record<Phase, string> = {
-  init: "Setting up",
-  building: "Preparing the classroom",
-  ready: "Ready to start",
-  discussion: "In discussion",
-  ended: "Finished",
-};
+const PHASE_LABEL = {
+  init: "phaseInit",
+  building: "phaseBuilding",
+  ready: "phaseReady",
+  discussion: "phaseDiscussion",
+  ended: "finished",
+} as const;
 
-function when(seconds: number) {
-  return new Date(seconds * 1000).toLocaleString("en-US", {
+function when(seconds: number, locale: string) {
+  return new Date(seconds * 1000).toLocaleString(locale, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -162,6 +163,7 @@ function when(seconds: number) {
 }
 
 export default function MyPage() {
+  const { locale, t } = useI18n();
   const router = useRouter();
   const theme = useTheme();
   const user = useCurrentUser();
@@ -190,7 +192,7 @@ export default function MyPage() {
       <Screen>
         <Navbar />
         <Page>
-          {user === null ? <LoginCard description="Enter your nickname to see your sessions and continue one." /> : null}
+          {user === null ? <LoginCard description={t("loginSessions")} /> : null}
         </Page>
       </Screen>
     );
@@ -202,37 +204,37 @@ export default function MyPage() {
       <Page>
         <Card>
           <Header>
-            <Title>My page</Title>
+            <Title>{t("myPage")}</Title>
           </Header>
           <Profile>
             <ProfileImage color={theme.colors.SLATE[600]} size={40} />
             <strong>{user.name}</strong>
             <Button variant="ghost" onClick={signOut}>
-              Sign out
+              {t("signOut")}
             </Button>
           </Profile>
 
-          <SectionTitle>My sessions</SectionTitle>
-          {sessions === undefined ? <Note role="status">Loading your sessions…</Note> : null}
-          {sessions === null ? <Note role="alert">Your sessions could not be loaded. Reload the page to try again.</Note> : null}
-          {sessions && sessions.length === 0 ? <Note>You have no sessions yet.</Note> : null}
+          <SectionTitle>{t("mySessions")}</SectionTitle>
+          {sessions === undefined ? <Note role="status">{t("loadingSessions")}</Note> : null}
+          {sessions === null ? <Note role="alert">{t("sessionsError")}</Note> : null}
+          {sessions && sessions.length === 0 ? <Note>{t("noSessions")}</Note> : null}
           {sessions && sessions.length > 0 ? (
             <List>
               {sessions.map((session) => {
                 const done = session.phase === "ended";
-                // The classroom page continues the session named in the URL (?session=<id>).
-                const href = `/chat?session=${encodeURIComponent(session.sessionId)}`;
+                const path = session.phase === "discussion" || done ? "/chat" : "/";
+                const href = `${path}?session=${encodeURIComponent(session.sessionId)}`;
                 return (
                   <Item key={session.sessionId}>
                     <div>
                       <strong>{session.topic}</strong>
-                      <Status $done={done}>{session.phase ? PHASE_LABEL[session.phase] : "Unknown"}</Status>
+                      <Status $done={done}>{session.phase ? t(PHASE_LABEL[session.phase]) : t("unknown")}</Status>
                       <Note>
-                        {session.messageCount} messages · last active {when(session.updatedAt)}
+                        {t("sessionActivity", { count: session.messageCount, date: when(session.updatedAt, locale) })}
                       </Note>
                     </div>
                     <Button variant={done ? "ghost" : "primary"} onClick={() => router.push(href)}>
-                      {done ? "View" : "Continue"}
+                      {done ? t("view") : t("continue")}
                       <ArrowRight size={16} aria-hidden="true" />
                     </Button>
                   </Item>
@@ -243,7 +245,7 @@ export default function MyPage() {
           <Actions>
             <Button variant={sessions && sessions.length > 0 ? "ghost" : "primary"} onClick={() => router.push("/")}>
               <Plus size={16} aria-hidden="true" />
-              Start a new session
+              {t("startNew")}
             </Button>
           </Actions>
         </Card>

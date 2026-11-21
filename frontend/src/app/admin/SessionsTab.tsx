@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/i18n";
 import { useCallback, useMemo, useState } from "react";
 import styled from "styled-components";
 import { Button } from "@/common/components";
@@ -81,16 +82,17 @@ const MARK: Record<Accuracy, string> = { correct: "○", partial: "△", incorre
 const mark = (accuracy: Accuracy | null) => (accuracy ? `${MARK[accuracy]} ` : "");
 
 function StateHistory({ name, versions }: { name: string; versions: StateVersion[] }) {
+  const { t } = useI18n();
   return (
     <Details>
       <summary>
-        {name} · {versions.length} versions
+        {name} · {t("versionCount", { count: versions.length })}
       </summary>
       {[...versions].reverse().map((v) => (
         <div key={v.version}>
           <Meta>
             v{v.version}
-            {v.turnNumber ? ` · changed in turn ${v.turnNumber}` : " · initial state"} · {dateTime(v.createdAt)}
+            {v.turnNumber ? ` · ${t("changedTurn", { turn: v.turnNumber })}` : ` · ${t("initialState")}`} · {dateTime(v.createdAt)}
           </Meta>
           <ul>
             {v.state.beliefs.map((b) => (
@@ -100,16 +102,16 @@ function StateHistory({ name, versions }: { name: string; versions: StateVersion
               </li>
             ))}
             <li>
-              Explanation: {mark(v.state.explanationAccuracy)}
+              {t("explanationLabel")} {mark(v.state.explanationAccuracy)}
               {v.state.explanation}
             </li>
             {v.state.openQuestions.map((q) => (
-              <li key={q}>Question: {q}</li>
+              <li key={q}>{t("questionLabel")} {q}</li>
             ))}
           </ul>
           {v.changes.length ? (
             <Meta>
-              Changes:{" "}
+              {t("changesLabel")}{" "}
               {v.changes.map((c) => `${c.field} ${c.kind}${c.after ? ` → ${c.after}` : ""}`).join(" / ")}
             </Meta>
           ) : null}
@@ -129,6 +131,7 @@ function download(name: string, data: unknown) {
 }
 
 function EventLog({ token, sessionId }: { token: string; sessionId: string }) {
+  const { t } = useI18n();
   const [events, setEvents] = useState<AdminEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState("");
@@ -148,14 +151,14 @@ function EventLog({ token, sessionId }: { token: string; sessionId: string }) {
   return (
     <Card>
       <Row>
-        <Heading>Event log</Heading>
+        <Heading>{t("eventLog")}</Heading>
         <Button variant="ghost" onClick={load}>
-          {events ? "Reload" : "Load"}
+          {events ? t("reload") : t("load")}
         </Button>
         {events ? (
           <>
-            <select value={type} onChange={(event) => setType(event.target.value)} aria-label="Event type">
-              <option value="">All ({events.length})</option>
+            <select value={type} onChange={(event) => setType(event.target.value)} aria-label={t("eventType")}>
+              <option value="">{t("allEvents", { count: events.length })}</option>
               {types.map((t) => (
                 <option key={t} value={t}>
                   {t} ({events.filter((e) => e.type === t).length})
@@ -163,7 +166,7 @@ function EventLog({ token, sessionId }: { token: string; sessionId: string }) {
               ))}
             </select>
             <Button variant="ghost" onClick={() => download(`csl-${sessionId}-events.json`, events)}>
-              Download JSON
+              {t("downloadJson")}
             </Button>
           </>
         ) : null}
@@ -174,10 +177,10 @@ function EventLog({ token, sessionId }: { token: string; sessionId: string }) {
           <Table>
             <thead>
               <tr>
-                <th className="num">seq</th>
-                <th>Time</th>
-                <th>Type</th>
-                <th>Data</th>
+                <th className="num">{t("sequence")}</th>
+                <th>{t("time")}</th>
+                <th>{t("type")}</th>
+                <th>{t("data")}</th>
               </tr>
             </thead>
             <tbody>
@@ -200,17 +203,18 @@ function EventLog({ token, sessionId }: { token: string; sessionId: string }) {
 }
 
 function SessionView({ token, sessionId }: { token: string; sessionId: string }) {
+  const { t } = useI18n();
   const fetcher = useCallback(() => adminApi.session(token, sessionId), [token, sessionId]);
   const { data: detail, error, reload: load } = useAdminLoad<AdminSessionDetail>(fetcher);
 
   if (error) return <ErrorText>{error}</ErrorText>;
-  if (!detail) return <Meta>Loading…</Meta>;
+  if (!detail) return <Meta>{t("loading")}</Meta>;
 
   const s = detail.snapshot;
   const peers = s.participants.filter((p) => p.role === "peer");
   const sections: { title: string; messages: Message[] }[] = [
-    { title: "Setup chat", messages: s.messages.filter((m) => m.channel === "init") },
-    { title: "Discussion", messages: s.messages.filter((m) => m.channel === "discussion") },
+    { title: t("setupChat"), messages: s.messages.filter((m) => m.channel === "init") },
+    { title: t("discussion"), messages: s.messages.filter((m) => m.channel === "discussion") },
   ];
 
   return (
@@ -219,17 +223,17 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
         <Row>
           <Heading>{s.topic}</Heading>
           <Button variant="ghost" onClick={load}>
-            Refresh
+            {t("refresh")}
           </Button>
           <Button variant="ghost" onClick={() => download(`csl-${s.sessionId}.json`, detail)}>
-            Download JSON
+            {t("downloadJson")}
           </Button>
         </Row>
         <Meta>
-          {s.sessionId} · {s.pipeline || "?"} · {s.phase} / {s.status} · {s.language} · started {dateTime(s.createdAt)} ·{" "}
-          {detail.live ? "in memory" : "stored copy"}
+          {s.sessionId} · {s.pipeline || "?"} · {s.phase} / {s.status} · {s.language} {t("startedAt", { date: dateTime(s.createdAt) })} ·{" "}
+          {detail.live ? t("inMemoryCopy") : t("storedCopy")}
         </Meta>
-        {s.focus ? <Meta>focus: {s.focus}</Meta> : null}
+        {s.focus ? <Meta>{t("focusLabel")} {s.focus}</Meta> : null}
         {s.participants.length ? (
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
             {s.participants.map((p) => (
@@ -253,7 +257,7 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
                   <Speaker>
                     {m.turnNumber ? `${m.turnNumber}. ` : ""}
                     {m.speakerName} · {dateTime(m.createdAt)}
-                    {m.invited ? " · invited explanation" : ""}
+                    {m.invited ? ` · ${t("invitedExplanation")}` : ""}
                   </Speaker>
                   {m.text}
                 </Line>
@@ -265,7 +269,7 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
 
       {peers.length ? (
         <Card>
-          <Heading>Knowledge state history</Heading>
+          <Heading>{t("stateHistory")}</Heading>
           {peers.map((p) =>
             s.states[p.id] ? <StateHistory key={p.id} name={p.name} versions={s.states[p.id]} /> : null,
           )}
@@ -274,7 +278,7 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
 
       <Card>
         <Details>
-          <summary>Pipeline scratch</summary>
+          <summary>{t("pipelineScratch")}</summary>
           <Pre>{JSON.stringify(detail.scratch, null, 2)}</Pre>
         </Details>
       </Card>
@@ -285,6 +289,7 @@ function SessionView({ token, sessionId }: { token: string; sessionId: string })
 }
 
 export function SessionsTab({ token }: { token: string }) {
+  const { t } = useI18n();
   const fetcher = useCallback(() => adminApi.sessions(token), [token]);
   const { data: rows, error, reload: load } = useAdminLoad<AdminSessionRow[]>(fetcher);
   const [selected, setSelected] = useState<string | null>(null);
@@ -297,27 +302,27 @@ export function SessionsTab({ token }: { token: string }) {
     <Split>
       <Card>
         <Row>
-          <Heading>Sessions {rows ? `(${rows.length})` : ""}</Heading>
+          <Heading>{t("sessions")} {rows ? `(${rows.length})` : ""}</Heading>
           <Button variant="ghost" onClick={load}>
-            Refresh
+            {t("refresh")}
           </Button>
         </Row>
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by topic or session ID" />
+        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("searchSessions")} />
         {error ? <ErrorText>{error}</ErrorText> : null}
-        {rows && !rows.length ? <Meta>No sessions yet.</Meta> : null}
+        {rows && !rows.length ? <Meta>{t("noAdminSessions")}</Meta> : null}
         {shown.length ? (
           <TableWrap>
             <Table>
               <thead>
                 <tr>
-                  <th>Started</th>
-                  <th>Topic</th>
-                  <th>Phase</th>
-                  <th>User</th>
-                  <th>Pipeline</th>
-                  <th className="num">Messages</th>
+                  <th>{t("started")}</th>
+                  <th>{t("topic")}</th>
+                  <th>{t("phase")}</th>
+                  <th>{t("user")}</th>
+                  <th>{t("pipeline")}</th>
+                  <th className="num">{t("messages")}</th>
                   <th className="num">LLM</th>
-                  <th className="num">Cost</th>
+                  <th className="num">{t("cost")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -344,7 +349,7 @@ export function SessionsTab({ token }: { token: string }) {
             </Table>
           </TableWrap>
         ) : null}
-        <Meta>● = currently loaded in server memory</Meta>
+        <Meta>{t("inMemory")}</Meta>
       </Card>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
@@ -352,7 +357,7 @@ export function SessionsTab({ token }: { token: string }) {
           <SessionView key={selected} token={token} sessionId={selected} />
         ) : (
           <Card>
-            <Meta>Pick a session from the list.</Meta>
+            <Meta>{t("pickSession")}</Meta>
           </Card>
         )}
       </div>

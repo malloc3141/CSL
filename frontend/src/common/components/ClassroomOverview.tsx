@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/i18n";
 import styled from "styled-components";
 import { peerColor } from "@/styles/peerColors";
 
@@ -89,54 +90,56 @@ export type OverviewParticipant = {
 };
 
 // Shown when no participants are passed (component demo).
-const PARTICIPANTS: OverviewParticipant[] = [
-  {
-    name: "Peer 1",
-    peerIndex: 0,
-    basis: "A common misconception about the topic",
-    belief: "“Could a simple, everyday explanation account for this?”",
-    note: "Brings an intuitive perspective for the classroom to examine.",
-  },
-  {
-    name: "Peer 2",
-    peerIndex: 1,
-    basis: "An alternative hypothesis to explore",
-    belief: "“What if another factor is responsible?”",
-    note: "Offers a different explanation to compare with your own ideas.",
-  },
-  {
-    name: "Tutor",
-    peerIndex: null,
-    basis: "Discussion guidance and explanation checking",
-    belief: "“What evidence would help us test these explanations?”",
-    note: "Helps compare assumptions and evidence to build understanding.",
-  },
-];
+function demoParticipants(t: ReturnType<typeof useI18n>["t"]): OverviewParticipant[] {
+  return [
+    {
+      name: t("peerOne"),
+      peerIndex: 0,
+      basis: t("peerOneBasis"),
+      belief: t("peerOneBelief"),
+      note: t("peerOneNote"),
+    },
+    {
+      name: t("peerTwo"),
+      peerIndex: 1,
+      basis: t("peerTwoBasis"),
+      belief: t("peerTwoBelief"),
+      note: t("peerTwoNote"),
+    },
+    {
+      name: t("tutor"),
+      peerIndex: null,
+      basis: t("tutorBasis"),
+      belief: t("tutorBelief"),
+      note: t("tutorNote"),
+    },
+  ];
+}
 
 export function ClassroomOverview({
   topic,
-  participants = PARTICIPANTS,
+  participants,
 }: {
   topic: string;
   /** The session's participants (snapshot.participants with their initial states). */
   participants?: OverviewParticipant[];
 }) {
+  const { t } = useI18n();
+  const people = participants ?? demoParticipants(t);
   return (
     <Overview>
-      <Heading>Your classroom is ready!</Heading>
+      <Heading>{t("overviewReady")}</Heading>
       <Description>
-        Meet the participants who will help you explore {topic} from {participants.length === 3 ? "three" : participants.length} perspectives.
-        The peers are learners like you, so what they say can be wrong. The tutor guides the discussion and will
-        ask you to explain your own understanding; it does not have to be complete or correct.
+        {t("overviewIntro", { topic, count: people.length })}
       </Description>
       <Grid>
-        {participants.map((participant) => (
+        {people.map((participant) => (
           <Participant key={participant.name}>
             <Badge $peerIndex={participant.peerIndex}>{participant.name}</Badge>
             <Details>
-              <dt>Creation basis</dt>
+              <dt>{t("creationBasis")}</dt>
               <dd>{participant.basis}</dd>
-              <dt>Initial understanding / role</dt>
+              <dt>{t("initialRole")}</dt>
               <dd>{participant.belief}</dd>
             </Details>
             <Note>{participant.note ?? ""}</Note>

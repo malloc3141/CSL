@@ -1,5 +1,7 @@
 "use client";
 
+import { LanguageButton } from "@/common/components/Navbar";
+import { useI18n } from "@/i18n";
 // Admin page: LLM usage and cost, runtime model switch, session history.
 // Talks to /api/admin/* (backend/app/admin.py) with the server's ADMIN_TOKEN.
 
@@ -15,9 +17,9 @@ import { Card, ErrorText, Heading, Input, Label, Meta, Row, errorMessage } from 
 
 const TOKEN_KEY = "csl.adminToken";
 const TABS = [
-  { id: "usage", label: "Usage" },
-  { id: "model", label: "Models" },
-  { id: "sessions", label: "Sessions" },
+  { id: "usage", label: "usage" },
+  { id: "model", label: "models" },
+  { id: "sessions", label: "sessions" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -53,6 +55,7 @@ function writeToken(token: string | null) {
 }
 
 export default function AdminPage() {
+  const { t } = useI18n();
   const [token, setToken] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [config, setConfig] = useState<ModelConfig | null>(null);
@@ -105,9 +108,12 @@ export default function AdminPage() {
           }}
         >
           <Card>
-            <Heading>CSL Admin</Heading>
+            <Row>
+              <Heading>{t("admin")}</Heading>
+              <LanguageButton />
+            </Row>
             <Label htmlFor="admin-token">
-              Admin token (ADMIN_TOKEN in backend/.env on the server)
+              {t("adminToken")}
               <Input
                 id="admin-token"
                 type="password"
@@ -118,11 +124,11 @@ export default function AdminPage() {
             </Label>
             <Row>
               <Button type="submit" disabled={busy || !draft.trim()}>
-                {busy ? "Checking…" : "Sign in"}
+                {busy ? t("checking") : t("signIn")}
               </Button>
             </Row>
             {error ? <ErrorText>{error}</ErrorText> : null}
-            <Meta>The token is kept only in the sessionStorage of this tab and is gone when the tab closes.</Meta>
+            <Meta>{t("tokenStorage")}</Meta>
           </Card>
         </Narrow>
       </Page>
@@ -133,20 +139,21 @@ export default function AdminPage() {
     <Page>
       <Card>
         <Row>
-          <Heading>CSL Admin</Heading>
+          <Heading>{t("admin")}</Heading>
           <span style={{ flex: 1 }} />
-          {TABS.map((t) => (
-            <Button key={t.id} variant={tab === t.id ? "primary" : "ghost"} onClick={() => setTab(t.id)}>
-              {t.label}
+          <LanguageButton />
+          {TABS.map((item) => (
+            <Button key={item.id} variant={tab === item.id ? "primary" : "ghost"} onClick={() => setTab(item.id)}>
+              {t(item.label)}
             </Button>
           ))}
           <Button variant="ghost" onClick={signOut}>
-            Sign out
+            {t("signOut")}
           </Button>
         </Row>
         <Meta>
-          Pipeline {config.pipeline} · main {config.model || "(not set)"} · fast {config.modelFast || "(same as main)"}
-          {config.overridden ? " · overridden from the admin page" : ""}
+          {t("modelSummary", { pipeline: config.pipeline, main: config.model || t("notSet"), fast: config.modelFast || t("sameAsMain") })}
+          {config.overridden ? t("overridden") : ""}
         </Meta>
       </Card>
 

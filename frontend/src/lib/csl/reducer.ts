@@ -13,7 +13,7 @@ export function applyEvent(state: SessionSnapshot | null, event: ServerEvent): S
     case "phase.changed":
       return event.data.phase === "ended"
         ? { ...state, phase: "ended", activeTurn: null, invitedTurnId: null }
-        : { ...state, phase: event.data.phase };
+        : { ...state, phase: event.data.phase, language: event.data.language ?? state.language };
 
     case "status.changed":
       return {

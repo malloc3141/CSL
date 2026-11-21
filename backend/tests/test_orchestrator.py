@@ -156,9 +156,12 @@ async def test_disconnect_pauses_and_reconnect_resumes(tmp_path, store):
 
 async def test_session_survives_restart(settings, store):
     first = SessionRegistry(settings, store, fast_mock())
-    runner = first.create("x", "ko")
+    runner = first.create("x", "en")
     c = Client(runner)
-    await to_discussion(c)
+    await to_discussion(c, start=False)
+    c.send("discussion.start", language="ko")
+    started = await c.until("phase.changed", lambda d: d["phase"] == "discussion")
+    assert started["language"] == "ko"
     await c.until("message.completed", lambda d: d["message"]["turnNumber"] == 3)
     sid = runner.session.id
     await first.stop()
@@ -169,12 +172,14 @@ async def test_session_survives_restart(settings, store):
         restored = await second.get(sid)
         s = restored.session
         assert s.phase == "discussion" and s.status == "paused" and s.turn_count >= 3
+        assert s.language == "ko"
         assert s.scratch["mock"]["cursor"] == s.turn_count
         before = s.turn_count
         c2 = Client(restored)
         c2.send("control.resume")
         nxt = (await c2.until("message.completed"))["message"]
         assert nxt["turnNumber"] == before + 1 and nxt["meta"]["mock"]["key"] == str(before + 1)
+        assert nxt["text"] == fast_mock().fx["turns"][before]["text"]["ko"]
     finally:
         await second.stop()
 

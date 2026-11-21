@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/i18n";
+import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Languages, UserRound } from "lucide-react";
@@ -82,14 +84,33 @@ export type NavbarProps = {
   onLanguageClick?: () => void;
 };
 
-export function Navbar({ onProfileClick, onLanguageClick }: NavbarProps) {
-  const router = useRouter();
-  const user = useCurrentUser();
-  const profileLabel = user ? `My page (${user.name})` : "Sign in";
+export function LanguageButton({ onClick }: { onClick?: () => void }) {
+  const { locale, setLocale, t } = useI18n();
+  const [pending, startTransition] = useTransition();
+  const switchLanguage = () => startTransition(() => setLocale(locale === "en" ? "ko" : "en"));
 
   return (
-    <Navigation aria-label="Main navigation">
-      <Brand href="/" aria-label="CSL home">CSL</Brand>
+    <IconButton
+      type="button"
+      aria-label={t("switchLanguage")}
+      title={t("switchLanguage")}
+      onClick={onClick ?? switchLanguage}
+      disabled={pending}
+    >
+      <Languages size={22} aria-hidden="true" />
+    </IconButton>
+  );
+}
+
+export function Navbar({ onProfileClick, onLanguageClick }: NavbarProps) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const user = useCurrentUser();
+  const profileLabel = user ? t("myPageUser", { name: user.name }) : t("signIn");
+
+  return (
+    <Navigation aria-label={t("navigation")}>
+      <Brand href="/" aria-label={t("home")}>CSL</Brand>
       <Actions>
         <ProfileButton
           type="button"
@@ -100,9 +121,7 @@ export function Navbar({ onProfileClick, onLanguageClick }: NavbarProps) {
           <UserRound size={22} aria-hidden="true" />
           {user ? <UserName>{user.name}</UserName> : null}
         </ProfileButton>
-        <IconButton type="button" aria-label="Language" title="Language" onClick={onLanguageClick}>
-          <Languages size={22} aria-hidden="true" />
-        </IconButton>
+        <LanguageButton onClick={onLanguageClick} />
       </Actions>
     </Navigation>
   );

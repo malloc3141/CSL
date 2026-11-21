@@ -21,6 +21,8 @@ import {
   useRecentSessions,
 } from "@/lib/csl";
 import type { Accuracy, Health, Language, Role, SessionSummary, StateVersion } from "@/lib/csl";
+import { LanguageButton } from "@/common/components/Navbar";
+import { useI18n } from "@/i18n";
 import { peerColor } from "@/styles/peerColors";
 
 const Page = styled.main`
@@ -107,15 +109,16 @@ function Line(props: { role: Role; speaker: string; peerIndex: number | null; te
 }
 
 function StatePanel({ name, versions }: { name: string; versions: StateVersion[] }) {
+  const { t } = useI18n();
   const current = versions[versions.length - 1];
   const { state } = current;
   return (
     <Card>
       <Heading>
         {name} · v{current.version}
-        {current.turnNumber ? ` (changed in turn ${current.turnNumber})` : ""}
+        {current.turnNumber ? ` (${t("changedTurn", { turn: current.turnNumber })})` : ""}
       </Heading>
-      <Meta>Current beliefs</Meta>
+      <Meta>{t("currentBeliefs")}</Meta>
       <StateList>
         {state.beliefs.map((belief) => (
           <li key={belief.id}>
@@ -124,7 +127,7 @@ function StatePanel({ name, versions }: { name: string; versions: StateVersion[]
           </li>
         ))}
       </StateList>
-      <Meta>Current explanation</Meta>
+      <Meta>{t("currentExplanation")}</Meta>
       <StateList>
         <li>
           {mark(state.explanationAccuracy)}
@@ -133,7 +136,7 @@ function StatePanel({ name, versions }: { name: string; versions: StateVersion[]
       </StateList>
       {state.openQuestions.length > 0 ? (
         <>
-          <Meta>Open questions</Meta>
+          <Meta>{t("openQuestions")}</Meta>
           <StateList>
             {state.openQuestions.map((question) => (
               <li key={question}>{question}</li>
@@ -145,8 +148,8 @@ function StatePanel({ name, versions }: { name: string; versions: StateVersion[]
   );
 }
 
-function when(seconds: number) {
-  return new Date(seconds * 1000).toLocaleString("en-US", {
+function when(seconds: number, locale: string) {
+  return new Date(seconds * 1000).toLocaleString(locale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -158,21 +161,27 @@ function when(seconds: number) {
 // The session id lives in the URL (?session=<id>), so a reload or the back button returns to the
 // same session. See src/lib/csl/browserSession.ts.
 export default function DevPage() {
+  const { t } = useI18n();
   const sessionId = useCurrentSessionId();
   if (sessionId === undefined) {
     return (
       <Page>
         <Card>
-          <Meta>Loading…</Meta>
+          <Meta>{t("loading")}</Meta>
         </Card>
       </Page>
     );
   }
-  if (sessionId === null) return <StartForm />;
-  return <SessionView key={sessionId} sessionId={sessionId} />;
+  return (
+    <>
+      <LanguageButton />
+      {sessionId === null ? <StartForm /> : <SessionView key={sessionId} sessionId={sessionId} />}
+    </>
+  );
 }
 
 function StartForm() {
+  const { locale, t } = useI18n();
   const [topic, setTopic] = useState("Why is summer hotter than winter?");
   const [language, setLanguage] = useState<Language>("en");
   // "" = the server's default pipeline; otherwise a name from health.sessionPipelines.
@@ -266,80 +275,78 @@ function StartForm() {
   return (
     <Page>
       <Card>
-        <Heading>Backend connection check</Heading>
-        <TextField id="topic" label="Topic" value={topic} onChange={setTopic} />
+        <Heading>{t("connectionCheck")}</Heading>
+        <TextField id="topic" label={t("topic")} value={topic} onChange={setTopic} />
         <Row>
-          <Meta>Discussion language</Meta>
+          <Meta>{t("discussionLanguage")}</Meta>
           <select
             value={language}
             onChange={(event) => setLanguage(event.target.value as Language)}
-            aria-label="Discussion language"
+            aria-label={t("discussionLanguage")}
           >
-            <option value="en">English</option>
-            <option value="ko">Korean</option>
+            <option value="en">{t("english")}</option>
+            <option value="ko">{t("korean")}</option>
           </select>
         </Row>
         <Row>
-          <Meta>Agents</Meta>
-          <select value={pipeline} onChange={(event) => setPipeline(event.target.value)} aria-label="Agents">
-            <option value="">Server default{health ? ` (${health.pipeline})` : ""}</option>
+          <Meta>{t("agents")}</Meta>
+          <select value={pipeline} onChange={(event) => setPipeline(event.target.value)} aria-label={t("agents")}>
+            <option value="">{t("serverDefault")}{health ? ` (${health.pipeline})` : ""}</option>
             {named.map((name) => (
               <option key={name} value={name}>
                 {name}
-                {(health ? health.freePipelines.includes(name) : name === "mock") ? " (scripted, free)" : ""}
+                {(health ? health.freePipelines.includes(name) : name === "mock") ? t("freeScripted") : ""}
               </option>
             ))}
           </select>
         </Row>
         {pipeline === "mock" ? (
           <Meta>
-            The mock replays a fixed scenario (&quot;Why is summer hotter than winter?&quot;) and ignores the topic. It
-            makes no LLM calls and needs no access code.
+            {t("mockNote")}
           </Meta>
         ) : null}
         {free ? null : (
           <TextField
             id="code"
-            label="Access code (if the server requires one)"
+            label={t("optionalAccess")}
             value={accessCode}
             onChange={setAccessCode}
           />
         )}
         <Row>
           <Button onClick={start} disabled={busy || !topic.trim()}>
-            {busy ? "Starting…" : "Start session"}
+            {busy ? t("starting") : t("startSession")}
           </Button>
         </Row>
-        {createError ? <ErrorText>Could not create the session: {createError}</ErrorText> : null}
+        {createError ? <ErrorText>{t("createFailed")} {createError}</ErrorText> : null}
       </Card>
 
       <Side>
         <Card>
-          <Heading>Account</Heading>
+          <Heading>{t("account")}</Heading>
           {user ? (
             <>
               <Row>
                 <Meta style={{ flex: 1 }}>
-                  Signed in as <b>{user.name}</b>
+                  {t("signedInAs", { name: user.name })}
                 </Meta>
                 <Button variant="ghost" onClick={signOut}>
-                  Sign out
+                  {t("signOut")}
                 </Button>
               </Row>
-              <Meta>Sessions you start now are kept under this nickname and can be continued from any browser.</Meta>
+              <Meta>{t("accountNote")}</Meta>
             </>
           ) : (
             <>
-              <TextField id="nickname" label="Nickname (optional on this page)" value={nickname} onChange={setNickname} />
+              <TextField id="nickname" label={t("optionalNickname")} value={nickname} onChange={setNickname} />
               <Row>
                 <Button onClick={login} disabled={signingIn || nickname.trim().length < 2}>
-                  {signingIn ? "Signing in…" : "Sign in"}
+                  {signingIn ? t("signingIn") : t("signIn")}
                 </Button>
               </Row>
-              {loginError ? <ErrorText>Could not sign in: {loginError}</ErrorText> : null}
+              {loginError ? <ErrorText>{t("loginFailed")} {loginError}</ErrorText> : null}
               <Meta>
-                No password. A new nickname creates an account; a known one signs in to it. Without signing in, a
-                session is only remembered in this browser.
+                {t("devLoginNote")}
               </Meta>
             </>
           )}
@@ -347,17 +354,17 @@ function StartForm() {
 
         {user && mySessions ? (
           <Card>
-            <Heading>My sessions</Heading>
-            {mySessions.length === 0 ? <Meta>None yet. Start one on the left.</Meta> : null}
+            <Heading>{t("mySessions")}</Heading>
+            {mySessions.length === 0 ? <Meta>{t("startOnLeft")}</Meta> : null}
             {mySessions.map((item) => (
               <Row key={item.sessionId}>
                 <Meta style={{ flex: 1 }}>
                   {item.topic} · {item.pipeline ?? "?"} · {item.phase}
-                  {item.phase === "discussion" ? ` (${item.status})` : ""} · {item.messageCount} messages ·{" "}
-                  {when(item.updatedAt)}
+                  {item.phase === "discussion" ? ` (${item.status})` : ""} · {t("messageCount", { count: item.messageCount })} ·{" "}
+                  {when(item.updatedAt, locale)}
                 </Meta>
                 <Button variant="ghost" onClick={() => setCurrentSessionId(item.sessionId)}>
-                  {item.phase === "ended" ? "View" : "Resume"}
+                  {item.phase === "ended" ? t("view") : t("resume")}
                 </Button>
               </Row>
             ))}
@@ -366,23 +373,22 @@ function StartForm() {
 
         {recent.length > 0 ? (
           <Card>
-            <Heading>Sessions started in this browser (not signed in)</Heading>
+            <Heading>{t("browserSessions")}</Heading>
             {recent.map((item) => (
               <Row key={item.sessionId}>
                 <Meta style={{ flex: 1 }}>
-                  {item.topic} · {item.pipeline || "?"} · {when(item.createdAt)}
+                  {item.topic} · {item.pipeline || "?"} · {when(item.createdAt, locale)}
                 </Meta>
                 <Button variant="ghost" onClick={() => setCurrentSessionId(item.sessionId)}>
-                  Resume
+                  {t("resume")}
                 </Button>
                 <Button variant="ghost" onClick={() => forgetSession(item.sessionId)}>
-                  Forget
+                  {t("forget")}
                 </Button>
               </Row>
             ))}
             <Meta>
-              This list is kept in this browser only. A session can also be reopened with its link (the address of
-              this page while the session is open).
+              {t("browserSessionsNote")}
             </Meta>
           </Card>
         ) : null}
@@ -392,6 +398,7 @@ function StartForm() {
 }
 
 function SessionView({ sessionId }: { sessionId: string }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const { snapshot, connection, error, actions } = useCslSession(sessionId);
   // Leaving closes the socket; the server pauses the discussion and keeps the session.
@@ -402,11 +409,11 @@ function SessionView({ sessionId }: { sessionId: string }) {
     return (
       <Page>
         <Card>
-          <Heading>{missing ? "This session cannot be opened" : "Connecting…"}</Heading>
+          <Heading>{missing ? t("devOpenError") : t("connecting")}</Heading>
           <Meta>
             {missing
-              ? `Session ${sessionId} does not exist on this server (or this page's origin is not allowed).`
-              : `Session ${sessionId} · socket: ${connection}`}
+              ? t("missingSession", { id: sessionId })
+              : t("connectingSession", { id: sessionId, connection })}
           </Meta>
           <Row>
             <Button
@@ -415,7 +422,7 @@ function SessionView({ sessionId }: { sessionId: string }) {
                 leave();
               }}
             >
-              {missing ? "Start a new session" : "Leave"}
+              {missing ? t("startNew") : t("leave")}
             </Button>
           </Row>
         </Card>
@@ -439,9 +446,9 @@ function SessionView({ sessionId }: { sessionId: string }) {
     <Page>
       <Card>
         <Meta>
-          pipeline: {snapshot.pipeline || "?"} · phase: {phase} · status: {status} · socket: {connection} · {snapshot.messages.length} messages
+          {t("sessionStatus", { pipeline: snapshot.pipeline || "?", phase, status, connection, count: snapshot.messages.length })}
         </Meta>
-        {snapshot.focus ? <Meta>focus: {snapshot.focus}</Meta> : null}
+        {snapshot.focus ? <Meta>{t("focusLabel")} {snapshot.focus}</Meta> : null}
         {error ? (
           <ErrorText>
             {error.code}: {error.message}
@@ -470,42 +477,42 @@ function SessionView({ sessionId }: { sessionId: string }) {
             role={activeTurn.role}
             speaker={activeTurn.speakerName}
             peerIndex={activeTurn.peerIndex}
-            text={activeTurn.text || "Typing…"}
+            text={activeTurn.text || t("typing")}
           />
         ) : null}
-        {phase === "building" ? <Meta>Building the classroom…</Meta> : null}
-        {snapshot.invitedTurnId ? <Meta>The tutor is waiting for your explanation. (Resume = skip)</Meta> : null}
+        {phase === "building" ? <Meta>{t("buildingClassroom")}</Meta> : null}
+        {snapshot.invitedTurnId ? <Meta>{t("tutorWaiting")}</Meta> : null}
 
         {canType ? (
           <Composer
             value={draft}
             onChange={setDraft}
             onSubmit={submit}
-            placeholder={phase === "init" ? "Reply to the guide…" : "Join the discussion…"}
+            placeholder={phase === "init" ? t("replyGuide") : t("joinDiscussion")}
           />
         ) : null}
 
         <Row>
           {phase === "init" ? (
             <Button variant="ghost" onClick={actions.finishInit}>
-              Skip setup
+              {t("skipSetupShort")}
             </Button>
           ) : null}
-          {phase === "ready" ? <Button onClick={actions.startDiscussion}>Start discussion</Button> : null}
+          {phase === "ready" ? <Button onClick={() => actions.startDiscussion()}>{t("startDiscussion")}</Button> : null}
           {phase === "discussion" ? (
             <>
               {status === "running" ? (
                 <Button variant="ghost" onClick={actions.pause}>
-                  Pause
+                  {t("pause")}
                 </Button>
               ) : (
-                <Button onClick={actions.resume}>Resume</Button>
+                <Button onClick={actions.resume}>{t("resume")}</Button>
               )}
               <Button variant="ghost" onClick={actions.step}>
-                Next message
+                {t("nextMessage")}
               </Button>
               <Button variant="ghost" onClick={() => actions.setPace({ auto: !pace.auto })}>
-                Auto advance: {pace.auto ? "on" : "off"}
+                {t("autoAdvanceLabel")} {pace.auto ? t("on") : t("off")}
               </Button>
               {[0.5, 1, 2].map((speed) => (
                 <Button
@@ -517,20 +524,20 @@ function SessionView({ sessionId }: { sessionId: string }) {
                 </Button>
               ))}
               <Button variant="ghost" onClick={actions.end}>
-                End
+                {t("end")}
               </Button>
             </>
           ) : null}
-          {phase === "building" && error ? <Button onClick={actions.resume}>Retry</Button> : null}
+          {phase === "building" && error ? <Button onClick={actions.resume}>{t("retry")}</Button> : null}
           <span style={{ flex: 1 }} />
           <Button variant={phase === "ended" ? "primary" : "ghost"} onClick={leave}>
-            {phase === "ended" ? "New session" : "Leave session"}
+            {phase === "ended" ? t("newSession") : t("leaveSession")}
           </Button>
         </Row>
         <Meta>
           {phase === "ended"
-            ? "This session has ended."
-            : "Leaving does not end the session: it pauses, and this page's link or the list on the start page reopens it."}
+            ? t("sessionEnded")
+            : t("leaveHint")}
         </Meta>
       </Card>
 

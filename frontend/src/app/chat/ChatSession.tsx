@@ -1,8 +1,9 @@
 "use client";
 
+import { useI18n } from "@/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pause, Play, SkipForward } from "lucide-react";
+import { Pause, Play, SkipForward, X } from "lucide-react";
 import styled from "styled-components";
 import { Button, Composer, MessageBubble, Navbar } from "@/common/components";
 import { useCslSession, useCurrentSessionId } from "@/lib/csl";
@@ -16,18 +17,18 @@ const Screen = styled.div`
   background: ${({ theme }) => theme.colors.WHITE};
 `;
 
-const Classroom = styled.main`
+const Classroom = styled.main<{ $panelOpen: boolean }>`
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr) 300px;
+  grid-template-columns: 150px minmax(0, 1fr) ${({ $panelOpen }) => $panelOpen && "300px"};
   grid-template-rows: auto minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   @media (max-width: 1000px) {
-    grid-template-columns: 130px minmax(0, 1fr) 240px;
+    grid-template-columns: 130px minmax(0, 1fr) ${({ $panelOpen }) => $panelOpen && "240px"};
   }
   @media (max-width: 760px) {
     grid-template-columns: 110px minmax(0, 1fr);
-    grid-template-rows: auto minmax(320px, 1fr) auto;
+    grid-template-rows: auto minmax(320px, 1fr) ${({ $panelOpen }) => $panelOpen && "auto"};
     overflow-y: auto;
   }
 `;
@@ -201,7 +202,7 @@ const Understanding = styled.aside`
   padding: 20px;
   border-left: 1px solid ${({ theme }) => theme.colors.GRAY[200]};
   background: #f8f5df;
-  h2 { margin: 0 0 20px; font-size: 16px; }
+  &[hidden] { display: none; }
   h3 { margin: 0 0 16px; font-size: 16px; }
   h4 { margin: 20px 0 8px; font-size: 13px; }
   p { margin: 0; font-size: 14px; line-height: 1.6; }
@@ -212,6 +213,17 @@ const Understanding = styled.aside`
     border-top: 1px solid ${({ theme }) => theme.colors.GRAY[200]};
     border-left: 0;
   }
+`;
+
+const PanelHeader = styled.header`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 20px;
+
+  h2 { margin: 0; font-size: 16px; }
+  button { display: inline-flex; align-items: center; padding: 6px; }
 `;
 
 const PanelNote = styled.p`
@@ -303,21 +315,14 @@ const Fallback = styled.main`
   padding: 24px;
 `;
 
-const TUTOR_ROLE = "Guides the discussion: steps in when it stalls or drifts, and gives feedback on your explanations.";
-
 const SPEEDS = [0.5, 1, 1.5, 2];
 
-const ACCURACY_LABEL: Record<Accuracy, string> = {
-  correct: "Correct",
-  partial: "Partly correct",
-  incorrect: "Incorrect",
-};
-const CHANGED_FIELD: Record<StateChange["field"], string> = {
-  explanation: "Understanding",
-  beliefs: "Belief",
-  openQuestions: "Open question",
-};
-const CHANGED_KIND: Record<StateChange["kind"], string> = { added: "added", removed: "dropped", modified: "revised" };
+const CHANGED_FIELD = {
+  explanation: "understanding",
+  beliefs: "belief",
+  openQuestions: "openQuestion",
+} as const satisfies Record<StateChange["field"], string>;
+const CHANGED_KIND = { added: "added", removed: "dropped", modified: "revised" } as const;
 
 // What this browser remembers about how the learner likes to read the classroom.
 type Prefs = { showAccuracy: boolean; pauseOnPanel: boolean };
@@ -339,10 +344,12 @@ function latestVersions(snapshot: SessionSnapshot): Record<string, number> {
 }
 
 function Mark({ accuracy, show }: { accuracy: Accuracy | null; show: boolean }) {
-  return show && accuracy ? <AccuracyTag $accuracy={accuracy}>{ACCURACY_LABEL[accuracy]}</AccuracyTag> : null;
+  const { t } = useI18n();
+  return show && accuracy ? <AccuracyTag $accuracy={accuracy}>{t(accuracy)}</AccuracyTag> : null;
 }
 
 function StateBody({ state, label, showAccuracy }: { state: KnowledgeState; label: string; showAccuracy: boolean }) {
+  const { t } = useI18n();
   return (
     <>
       <h4>{label}</h4>
@@ -352,7 +359,7 @@ function StateBody({ state, label, showAccuracy }: { state: KnowledgeState; labe
       </p>
       {state.beliefs.length > 0 ? (
         <>
-          <h4>Beliefs</h4>
+          <h4>{t("beliefs")}</h4>
           <ul>
             {state.beliefs.map((belief) => (
               <li key={belief.id}>
@@ -370,17 +377,18 @@ function StateBody({ state, label, showAccuracy }: { state: KnowledgeState; labe
 // The classroom runs on the session named in the URL (?session=<id>). Leaving the page pauses the
 // discussion on the server; opening the same link (or "Continue" on My page) picks it up again.
 export function ChatSession() {
+  const { t } = useI18n();
   const router = useRouter();
   const sessionId = useCurrentSessionId();
   const { snapshot, connection, error, actions } = useCslSession(sessionId ?? null);
   const [draft, setDraft] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(true);
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   // The state version of each participant the learner has looked at; a newer one shows a dot in the list.
   const [seen, setSeen] = useState<Record<string, number> | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
-  const started = useRef(false);
 
   const phase = snapshot?.phase ?? null;
   const status = snapshot?.status ?? null;
@@ -395,18 +403,10 @@ export function ChatSession() {
 
   // A session that is still being set up belongs on the start page.
   useEffect(() => {
-    if (sessionId && (phase === "init" || phase === "building")) {
+    if (sessionId && (phase === "init" || phase === "building" || phase === "ready")) {
       router.replace(`/?session=${encodeURIComponent(sessionId)}`);
     }
   }, [phase, sessionId, router]);
-
-  // Entering the classroom starts the discussion.
-  useEffect(() => {
-    if (phase === "ready" && connection === "open" && !started.current) {
-      started.current = true;
-      actions.startDiscussion();
-    }
-  }, [phase, connection, actions]);
 
   // Whatever had already changed when the page opened is not news.
   if (snapshot && seen === null) setSeen(latestVersions(snapshot));
@@ -417,9 +417,9 @@ export function ChatSession() {
         <Navbar />
         <Fallback>
           <EmptyState>
-            {sessionId === null ? "No learning session is open." : "This session could not be opened."}
+            {sessionId === null ? t("noSession") : t("openError")}
           </EmptyState>
-          <Button onClick={() => router.push("/")}>Start a learning session</Button>
+          <Button onClick={() => router.push("/")}>{t("startLearningLink")}</Button>
         </Fallback>
       </Screen>
     );
@@ -464,8 +464,15 @@ export function ChatSession() {
   const openPanel = (id: string, from: "list" | "message") => {
     setSeen({ ...(seen ?? {}), ...(selected ? { [selected]: versionOf(selected) } : {}), [id]: versionOf(id) });
     setSelected(id);
+    setPanelOpen(true);
     actions.track("panel.open", { agentId: id, from });
     if (prefs.pauseOnPanel && running) actions.pause();
+  };
+
+  const closePanel = () => {
+    if (selected) setSeen((previous) => ({ ...previous, [selected]: versionOf(selected) }));
+    setSelected(null);
+    setPanelOpen(false);
   };
 
   // "Updated after turn N" in the panel leads to the message that caused the change.
@@ -477,28 +484,28 @@ export function ChatSession() {
     actions.track("state.jump", { turnId });
   };
   const statusLabel = !snapshot
-    ? "Opening…"
+    ? t("opening")
     : ended
-      ? "Finished"
+      ? t("finished")
       : connection !== "open"
-        ? "Reconnecting…"
+        ? t("reconnecting")
         : waiting
-          ? "Waiting for your explanation"
+          ? t("waitingExplanation")
           : running
             ? pace && !pace.auto && !active
-              ? "Press Next message to continue"
-              : "In progress"
+              ? t("nextToContinue")
+              : t("inProgress")
             : phase === "ready"
-              ? "Starting…"
-              : "Paused";
+              ? t("starting")
+              : t("paused");
 
   return (
     <Screen>
       <Navbar />
-      <Classroom>
-        <Sidebar aria-label="Classroom participants">
-          <h2>Classroom</h2>
-          <h3>Participants</h3>
+      <Classroom $panelOpen={panelOpen}>
+        <Sidebar aria-label={t("classroomParticipants")}>
+          <h2>{t("classroom")}</h2>
+          <h3>{t("participants")}</h3>
           <Participants>
             {participants.map((participant) => (
               <Participant
@@ -511,27 +518,27 @@ export function ChatSession() {
               >
                 {participant.name}
                 {participant.id !== selected && versionOf(participant.id) > (seen?.[participant.id] ?? 0) ? (
-                  <Dot role="img" aria-label="understanding updated" title="Understanding updated" />
+                  <Dot role="img" aria-label={t("updatedLower")} title={t("updated")} />
                 ) : null}
               </Participant>
             ))}
           </Participants>
         </Sidebar>
         <Goal>
-          <h1>Learning goal</h1>
+          <h1>{t("learningGoal")}</h1>
           <p>{snapshot?.focus ?? snapshot?.topic ?? "…"}</p>
         </Goal>
-        <Conversation aria-label="Study conversation">
+        <Conversation aria-label={t("studyConversation")}>
           <Controls>
             {phase === "discussion" && pace ? (
-              <ControlGroup role="group" aria-label="Pace">
-                <Check title="Off: the next message appears only when you press Next message">
+              <ControlGroup role="group" aria-label={t("pace")}>
+                <Check title={t("autoAdvanceHint")}>
                   <input
                     type="checkbox"
                     checked={pace.auto}
                     onChange={(event) => actions.setPace({ auto: event.target.checked })}
                   />
-                  Auto-advance
+                  {t("autoAdvance")}
                 </Check>
                 {SPEEDS.map((speed) => (
                   <Speed
@@ -540,14 +547,14 @@ export function ChatSession() {
                     $on={pace.speed === speed}
                     aria-pressed={pace.speed === speed}
                     disabled={!pace.auto}
-                    title="How fast the next message follows"
+                    title={t("speedHint")}
                     onClick={() => actions.setPace({ speed })}
                   >
                     {speed}×
                   </Speed>
                 ))}
                 <Button variant="ghost" disabled={connection !== "open"} onClick={actions.step}>
-                  Next message
+                  {t("nextMessage")}
                   <SkipForward size={16} aria-hidden="true" />
                 </Button>
               </ControlGroup>
@@ -558,23 +565,23 @@ export function ChatSession() {
             </Status>
             {ended ? (
               <Button variant="ghost" onClick={() => router.push("/")}>
-                New session
+                {t("newSession")}
               </Button>
             ) : running ? (
               <Button variant="ghost" onClick={actions.pause}>
-                Pause discussion
+                {t("pauseDiscussion")}
                 <Pause size={16} aria-hidden="true" />
               </Button>
             ) : (
               <Button variant="ghost" disabled={!snapshot || connection !== "open"} onClick={actions.resume}>
-                {waiting ? "Skip for now" : "Resume discussion"}
+                {waiting ? t("skipForNow") : t("resumeDiscussion")}
                 <Play size={16} aria-hidden="true" />
               </Button>
             )}
             </ControlGroup>
           </Controls>
-          {error ? <Notice role="alert">{error.message} Press Resume to try again.</Notice> : null}
-          <Messages role="log" aria-label="Messages" aria-live="polite">
+          {error ? <Notice role="alert">{error.message} {t("resumeHint")}</Notice> : null}
+          <Messages role="log" aria-label={t("messages")} aria-live="polite">
             <MessageList>
               {messages.map((message) => (
                 <ChatLine
@@ -593,8 +600,7 @@ export function ChatSession() {
                     </MessageBubble>
                     {(changedBy.get(message.id) ?? []).map((id) => (
                       <StateChip key={id} type="button" onClick={() => openPanel(id, "message")}>
-                        {participants.find((participant) => participant.id === id)?.name ?? id}’s understanding
-                        changed
+                        {t("understandingChanged", { name: participants.find((participant) => participant.id === id)?.name ?? id })}
                       </StateChip>
                     ))}
                   </Stack>
@@ -613,7 +619,7 @@ export function ChatSession() {
           <Composer
             value={draft}
             onChange={setDraft}
-            placeholder={waiting ? "Explain your understanding…" : "Join the discussion…"}
+            placeholder={waiting ? t("explainUnderstanding") : t("joinDiscussion")}
             disabled={!snapshot || ended || connection !== "open"}
             onSubmit={() => {
               if (!draft.trim()) return;
@@ -622,26 +628,30 @@ export function ChatSession() {
             }}
           />
         </Conversation>
-        <Understanding aria-label="Participant understanding">
-          <h2>Understanding</h2>
+        <Understanding aria-label={t("participantUnderstanding")} hidden={!panelOpen}>
+          <PanelHeader>
+            <h2>{t("understanding")}</h2>
+            <Button type="button" variant="ghost" aria-label={t("closeUnderstanding")} onClick={closePanel}>
+              <X size={18} aria-hidden="true" />
+            </Button>
+          </PanelHeader>
           {person ? (
             <div aria-live="polite">
               <h3>{person.name}</h3>
               {current ? (
                 <>
                   <PanelNote>
-                    A peer is a learner like you, not an expert: what they believe can be wrong, and it changes
-                    during the discussion.
+                    {t("peerNotice")}
                   </PanelNote>
                   {current.version === 0 ? (
-                    <p>Initial understanding: nothing has changed yet.</p>
+                    <p>{t("initialUnchanged")}</p>
                   ) : (
                     <TurnLink type="button" onClick={() => jumpTo(current.turnId)}>
-                      Updated after turn {current.turnNumber ?? "?"}: show the message
+                      {t("updatedAfterTurn", { turn: current.turnNumber ?? "?" })}
                     </TurnLink>
                   )}
-                  <StateBody state={current.state} label="Current understanding" showAccuracy={prefs.showAccuracy} />
-                  <h4>Open question</h4>
+                  <StateBody state={current.state} label={t("currentUnderstanding")} showAccuracy={prefs.showAccuracy} />
+                  <h4>{t("openQuestion")}</h4>
                   {current.state.openQuestions.length > 0 ? (
                     <ul>
                       {current.state.openQuestions.map((question) => (
@@ -649,16 +659,16 @@ export function ChatSession() {
                       ))}
                     </ul>
                   ) : (
-                    <p>None right now.</p>
+                    <p>{t("noQuestions")}</p>
                   )}
                   {current.changes.length > 0 ? (
                     <>
-                      <h4>What changed in turn {current.turnNumber ?? "?"}</h4>
+                      <h4>{t("changedInTurn", { turn: current.turnNumber ?? "?" })}</h4>
                       <Changes>
                         {current.changes.map((change, index) => (
                           <li key={index}>
                             <strong>
-                              {CHANGED_FIELD[change.field]} {CHANGED_KIND[change.kind]}
+                              {t(CHANGED_FIELD[change.field])} {t(CHANGED_KIND[change.kind])}
                             </strong>
                             {change.before ? <del>{change.before}</del> : null}
                             {change.after ? <ins>{change.after}</ins> : null}
@@ -669,19 +679,19 @@ export function ChatSession() {
                   ) : null}
                   {earlier.length > 0 ? (
                     <History>
-                      <summary>Earlier understanding ({earlier.length})</summary>
+                      <summary>{t("earlierUnderstanding", { count: earlier.length })}</summary>
                       {earlier.map((version) => (
                         <Earlier key={version.version}>
                           {version.version === 0 ? (
                             <p>
-                              <strong>Initial understanding</strong>
+                              <strong>{t("initialUnderstanding")}</strong>
                             </p>
                           ) : (
                             <TurnLink type="button" onClick={() => jumpTo(version.turnId)}>
-                              After turn {version.turnNumber ?? "?"}: show the message
+                              {t("afterTurn", { turn: version.turnNumber ?? "?" })}
                             </TurnLink>
                           )}
-                          <StateBody state={version.state} label="Understanding" showAccuracy={prefs.showAccuracy} />
+                          <StateBody state={version.state} label={t("understanding")} showAccuracy={prefs.showAccuracy} />
                         </Earlier>
                       ))}
                     </History>
@@ -689,13 +699,13 @@ export function ChatSession() {
                 </>
               ) : (
                 <>
-                  <h4>Role</h4>
-                  <p>{person.description ?? TUTOR_ROLE}</p>
+                  <h4>{t("role")}</h4>
+                  <p>{person.description ?? t("tutorRole")}</p>
                 </>
               )}
             </div>
           ) : (
-            <EmptyState>Select a participant on the left to view their understanding here.</EmptyState>
+            <EmptyState>{t("selectParticipant")}</EmptyState>
           )}
           <Options>
             <Check>
@@ -704,7 +714,7 @@ export function ChatSession() {
                 checked={prefs.showAccuracy}
                 onChange={(event) => setPref({ showAccuracy: event.target.checked })}
               />
-              Mark what is correct and incorrect
+              {t("markAccuracy")}
             </Check>
             <Check>
               <input
@@ -712,7 +722,7 @@ export function ChatSession() {
                 checked={prefs.pauseOnPanel}
                 onChange={(event) => setPref({ pauseOnPanel: event.target.checked })}
               />
-              Pause the discussion when I open a panel
+              {t("pauseOnPanel")}
             </Check>
           </Options>
         </Understanding>

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { IDLE_STATE, SessionClient } from "./client";
 import type { SessionClientState } from "./client";
-import type { SetPace } from "./protocol";
+import type { Language, SetPace } from "./protocol";
 
 const subscribeNothing = () => () => {};
 const getIdleState = (): SessionClientState => IDLE_STATE;
@@ -35,7 +35,7 @@ export function useCslSession(sessionId: string | null) {
       replyInit: (text: string) => client?.send({ type: "init.reply", data: { text } }),
       /** Skip the rest of the initialization chat and build the classroom. */
       finishInit: () => client?.send({ type: "init.finish" }),
-      startDiscussion: () => client?.send({ type: "discussion.start" }),
+      startDiscussion: (language?: Language) => client?.send({ type: "discussion.start", data: { language } }),
       /** Say something in the discussion. Allowed at any time; interrupts the agents. */
       say: (text: string, clientMessageId?: string) =>
         client?.send({ type: "user.message", data: { text, clientMessageId } }),
