@@ -18,7 +18,7 @@ import re
 from typing import Any
 
 from ..config import get_settings
-from ..llm import get_llm
+from ..llm import extract_json, get_llm
 from ..protocol import Belief, KnowledgeState, Message, Participant
 from ..session import Session
 from .base import Classroom, InitResult, PipelineError, SpeakerDecision, StateUpdate, TextSink
@@ -186,19 +186,39 @@ class BaselinePipeline:
         system = INIT_SYSTEM.format(
             lang=LANG[session.language], stage=INIT_STAGES[stage].format(topic=session.topic)
         ) + (INIT_VERDICT if may_close else "")
-        messages = [{"role": "system", "content": system}]
-        if not transcript:
-            messages.append({"role": "user", "content": session.topic})
-        for m in transcript:
-            messages.append({"role": "user" if m.role == "user" else "assistant", "content": m.text})
         if not may_close:  # the first question and the first follow-up: always answered by the learner
+            messages = [{"role": "system", "content": system}]
+            if not transcript:
+                messages.append({"role": "user", "content": session.topic})
+            for m in transcript:
+                messages.append({"role": "user" if m.role == "user" else "assistant", "content": m.text})
             async for chunk in get_llm().stream(messages, temperature=0.5, max_tokens=300):
                 await out.write(chunk)
             return InitResult(done=False)
         # The guide says whether this message ends the chat, so the system does what the learner reads:
         # a request for more waits for the answer, and the classroom is built only after a closing message.
         # (One JSON call: this message arrives whole instead of streaming.)
-        data = await get_llm().complete_json(messages, temperature=0.5, max_tokens=400)
+        # The chat goes in as one block of text, not as chat turns: given its own earlier plain-text
+        # turns, the model keeps writing plain text and ignores the JSON instruction (seen on
+        # claude-haiku-5.5, 2026-11-21).
+        chat = "\n".join(f"{'Learner' if m.role == 'user' else 'Guide'}: {m.text}" for m in transcript)
+        messages = [
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": f"Topic: {session.topic}\n\nSetup chat so far:\n{chat}\n\n"
+                "Write the guide's next message. Reply with the JSON object only.",
+            },
+        ]
+        raw = (await get_llm().complete(messages, temperature=0.5, max_tokens=400, json_mode=True)).strip()
+        try:
+            data = extract_json(raw)
+        except ValueError:
+            if not raw or raw.startswith(("{", "`")):
+                raise PipelineError("the setup guide returned neither a message nor valid JSON") from None
+            # Plain text after all: show it, and let the text decide whether it was the closing message.
+            await out.write(raw)
+            return InitResult(done=not ends_with_question(raw))
         text = str(data.get("message") or "").strip()
         if not text:
             raise PipelineError("the setup guide returned no message")

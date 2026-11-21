@@ -29,11 +29,15 @@ class FakeLLM:
         for chunk in ("음, ", "그런가요?"):
             yield chunk
 
+    async def complete(self, messages, **kwargs):
+        # From the second reply on the setup guide says whether it is done: one JSON call.
+        assert "setup guide" in messages[0]["content"] and [m["role"] for m in messages] == ["system", "user"]
+        self.guide_json_calls.append(messages)
+        reply = self.guide.pop(0) if self.guide else {"message": "그 부분을 살펴볼게요. 교실을 준비할게요.", "done": True}
+        return reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)  # str: plain text, no JSON
+
     async def complete_json(self, messages, **kwargs):
         system, user = messages[0]["content"], messages[-1]["content"]
-        if "setup guide" in system:  # from the second reply on the guide says whether it is done
-            self.guide_json_calls.append(system)
-            return self.guide.pop(0) if self.guide else {"message": "그 부분을 살펴볼게요. 교실을 준비할게요.", "done": True}
         if "design a simulated classroom" in system:
             return {
                 "focus": "기울기가 무엇을 바꾸는가?",
@@ -130,11 +134,11 @@ async def test_setup_chat_ends_only_on_a_closing_message(settings, store, fake_l
     fake_llm.guide = [
         "어떻게 이해하고 있나요?",  # ask
         "왜 그렇게 되나요?",  # probe
-        # may close, asks for more without a question mark
-        {"message": "말한 '더 받는다'는 게 무엇인지 조금 더 설명해 주세요.", "done": False},
+        # may close; answers in plain text instead of JSON, and the text asks: the chat goes on
+        "말한 '더 받는다'는 게 무엇인지 좀 더 설명해볼까요?",
         # says it is done, but the message ends with a question: the learner is asked, so the chat goes on
         {"message": "좋아요. 조금만 더 설명해볼까요? 😊", "done": True},
-        # told to close, still asks
+        # told to close, still asks for more, without a question mark
         {"message": "그 부분이 어떻게 이어지는지도 말해 주세요.", "done": False},
         # closing message (a question mark in the middle is fine)
         {"message": "기울기가 무엇을 바꾸는가? 이 점을 중심으로 교실을 준비할게요.", "done": True},
@@ -155,9 +159,12 @@ async def test_setup_chat_ends_only_on_a_closing_message(settings, store, fake_l
         asked = [m[0]["content"] for m in fake_llm.streams]
         assert len(asked) == 2 and all('"done"' not in system for system in asked)
         # After that the guide chooses; after four replies it is told to close.
-        chose = fake_llm.guide_json_calls
+        chose = [m[0]["content"] for m in fake_llm.guide_json_calls]
         assert len(chose) == 4 and all('"done": true|false' in system for system in chose)
         assert "(a)" in chose[0] and "(a)" in chose[1]
         assert "(a)" not in chose[2] and "do not ask anything" in chose[2]
+        # The chat so far goes in as one block of text (as chat turns the model answers in plain text).
+        block = fake_llm.guide_json_calls[0][1]["content"]
+        assert "Setup chat so far:\nGuide: 어떻게 이해하고 있나요?\nLearner: 답 1\n" in block and "Learner: 답 2" in block
     finally:
         await registry.stop()
