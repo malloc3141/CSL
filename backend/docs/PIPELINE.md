@@ -21,6 +21,8 @@ class MyPipeline:
 ```
 
 `app/pipeline/baseline.py` is a complete example on OpenRouter; `mock.py` is one without an LLM.
+`app/pipeline/csl/` is the team's pipeline: one class whose methods call into `knowledge.py` and
+`discussion.py`, with the request layout for the prompt cache in `prompting.py`.
 
 The module is imported with `backend/` as the working directory: put the code under `backend/` (for
 example `backend/app/pipeline/mine.py` → `app.pipeline.mine:MyPipeline`). Extra Python packages go in
@@ -114,6 +116,14 @@ admin page (`/admin`) sums these. The model ids can be switched at runtime from 
 cache `settings.openrouter_model` yourself: pass `fast=True` / `fast=False` and let `get_llm()` pick. You may
 use another client or framework inside the methods; the interface is all the server needs (but then your
 calls are missing from the usage figures and ignore the model switch).
+
+**Prompt cache.** `messages` may use content blocks (`{"type": "text", "text": ..., "cache_control": {...}}`)
+instead of plain strings. Anthropic models only cache what a request marks this way, and only a prefix that is
+identical byte for byte, so put what never changes first and what changes per call last.
+`app/pipeline/csl/prompting.py` (`build_messages`) does this: session block → role block → one block per
+message → tail. `get_llm()` sends the session id with every call, which keeps one session on one provider so
+its calls can read each other's cache. `llm.call` records the tokens read from the cache, and the admin page
+shows the hit rate.
 
 ## Try it without the frontend
 

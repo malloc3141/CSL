@@ -170,8 +170,9 @@ export function UsageTab({ token, apiKeySet }: { token: string; apiKeySet: boole
           ) : null}
           <Meta>
             Cache hit rate: input tokens read from the provider&apos;s prompt cache, divided by the input tokens of
-            the calls that reported a cache figure (older calls, logged before this was recorded, are left out). Some providers, Anthropic among them, cache only when the request asks for it (cache_control);
-            this server does not send that yet, so 0% is expected for those models.
+            the calls that reported a cache figure (older calls, logged before this was recorded, are left out). Some providers, Anthropic among them, cache
+            only when the request asks for it (cache_control). The csl pipeline&apos;s discussion calls do; the
+            baseline, and with it csl&apos;s state updates, does not, so those calls show 0%.
           </Meta>
           <Meta>
             Turns cancelled midway (prefetched turns dropped when the learner interjects) report no tokens

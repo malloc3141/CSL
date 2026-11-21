@@ -23,11 +23,12 @@ browser ── REST + WebSocket ──> FastAPI (one process)
 | `app/openrouter.py` | OpenRouter model list (prices) and key spend, for the admin page. |
 | `app/pipeline/base.py` | The interface the agent code implements. |
 | `app/pipeline/mock.py` | Scripted lo-fi scenario, no LLM. For frontend work and tests. |
-| `app/pipeline/baseline.py` | Simple reference pipeline on OpenRouter. A placeholder for the real one. |
-| `app/llm.py` | OpenRouter client: streaming, JSON calls, retries, per-call usage and cost log, runtime model override. |
+| `app/pipeline/baseline.py` | Simple reference pipeline on OpenRouter. The server's default, and what the csl pipeline's knowledge side still calls. |
+| `app/pipeline/csl/` | The team's pipeline, registered as `csl`. `discussion.py`: who speaks next and what they say. `knowledge.py`: setup chat, classroom, knowledge states (currently calls the baseline). `prompting.py`: request assembly laid out for the prompt cache. |
+| `app/llm.py` | OpenRouter client: streaming, JSON calls, retries, per-call usage, cost and cache log, runtime model override. Sends the session id with every call so one session stays on one provider (prompt cache). |
 | `scripts/cli.py` | Run a session in the terminal, without server or frontend. |
 | `scripts/gen_ts.py` | Regenerate `frontend/src/lib/csl/protocol.ts` after changing `protocol.py`. |
-| `tests/` | 27 tests, no network: orchestrator, REST/WebSocket, baseline and LLM client with fakes, admin API, per-session pipelines. |
+| `tests/` | 45 tests, no network: orchestrator, REST/WebSocket, baseline, csl and LLM client with fakes, admin API, per-session pipelines. |
 
 ## Run
 
@@ -46,7 +47,7 @@ To use your own pipeline set `PIPELINE=your.module:YourPipeline` (see [docs/PIPE
 The module is imported with `backend/` as the working directory, so `backend/app/pipeline/mine.py` is
 `PIPELINE=app.pipeline.mine:MyPipeline`. The pipeline is loaded once at startup; changing it needs a restart.
 **Per-session pipelines.** `PIPELINE` is only the server's default. A single session can run on any pipeline
-registered in `SESSION_PIPELINES` (`app/pipeline/__init__.py`): `POST /api/sessions` with
+registered in `SESSION_PIPELINES` (`app/pipeline/__init__.py`; now `mock`, `baseline`, `csl`): `POST /api/sessions` with
 `"pipeline": "<name>"`, or the "Agents" selector on `/dev`. `GET /api/health` lists the names
 (`sessionPipelines`) and which of them are free (`freePipelines`).
 
@@ -99,8 +100,9 @@ The ones that matter in production:
     *Cache hit rate* (total, by model, by day): input tokens read from the provider's prompt cache
     (`usage.prompt_tokens_details.cached_tokens`, logged as `cachedTokens`) divided by the input tokens of
     the calls that reported that figure. Older calls, logged before this was recorded, are left out.
-    Some providers, Anthropic among them, only cache when the request asks for it (`cache_control`); this
-    server does not send that, so those models show 0%.
+    Some providers, Anthropic among them, only cache when the request asks for it (`cache_control`). The
+    csl pipeline's discussion calls do (`app/pipeline/csl/prompting.py`); the baseline, and with it csl's
+    state updates, does not, so those calls show 0%.
   - *Models*: switch `OPENROUTER_MODEL` / `OPENROUTER_MODEL_FAST` without a restart. The override is stored in
     the `config` table of the SQLite database and survives restarts; empty fields fall back to `.env`. It
     applies from the next LLM call. Ids are checked against the OpenRouter model list. It does nothing while
