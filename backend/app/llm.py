@@ -30,6 +30,11 @@ from .session import current_session
 
 Messages = list[dict[str, str]]
 
+
+class InvalidModelJSON(PipelineError):
+    """The model returned text, but its JSON could not be parsed after the allowed attempts."""
+
+
 # Runtime override of the model ids: (model, model_fast). "" = use the .env value.
 _override: tuple[str, str] = ("", "")
 
@@ -281,7 +286,7 @@ class LLM:
                 return extract_json(text)
             except ValueError as exc:
                 last = exc
-        raise PipelineError(f"model did not return valid JSON: {last}")
+        raise InvalidModelJSON(f"model did not return valid JSON: {last}") from last
 
 
 _llm: Optional[LLM] = None

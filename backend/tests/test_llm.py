@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.llm import LLM, REASONING_ONLY, reasoning_param
+from app.llm import LLM, REASONING_ONLY, InvalidModelJSON, reasoning_param
 from app.pipeline.base import PipelineError
 from helpers import make_settings
 
@@ -85,6 +85,13 @@ async def test_json_mode_fallback_still_works(tmp_path):
     assert await llm.complete_json([{"role": "user", "content": "x"}], attempts=1) == {"a": 1}
     assert "response_format" in fake.calls[0] and "response_format" not in fake.calls[1]
     assert fake.calls[1]["extra_body"]["reasoning"] == {"enabled": False}
+
+
+async def test_malformed_output_has_a_distinct_error_after_json_retries(tmp_path):
+    llm, fake = make_llm(tmp_path, [reply("unstructured", usage(1)), reply("{unfinished", usage(2))])
+    with pytest.raises(InvalidModelJSON):
+        await llm.complete_json([{"role": "user", "content": "x"}])
+    assert len(fake.calls) == 2
 
 
 async def test_reply_eaten_by_reasoning_gives_a_clear_error(tmp_path):

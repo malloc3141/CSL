@@ -12,18 +12,26 @@ from app.pipeline.csl.prompting import STRIDE, build_messages, cache_breakpoints
 from app.protocol import Message
 from helpers import Client
 
-REFERENCE = "REFERENCE-ONLY-FOR-TUTOR"
+REFERENCE = "PRIVATE-TUTOR-REFERENCE"
+PROPOSER = "ROLE: public knowledge-state proposer."
+GRADER = "ROLE: private accuracy grader."
+EXTRACTOR = "ROLE: neutral situation reader."
+SITUATION = "이 상황에서 기울기를 어떻게 해석할지 묻고 있어요."
+LEARNER_EVIDENCE = "기울기 때문에 각도가 달라져요"
+NEW_BELIEF = "기울면 햇빛이 들어오는 각도가 달라져요."
 
 
 def _role(messages) -> str:
-    return messages[0]["content"][1]["text"].split("\n", 1)[0] if isinstance(messages[0]["content"], list) else ""
+    system = messages[0]["content"]
+    return (system[1]["text"] if isinstance(system, list) else system).split("\n", 1)[0]
 
 
 class FakeLLM:
-    """Answers the knowledge side (baseline prompts, plain strings) and the discussion side (block lists)."""
+    """Record block requests and supply responses for one classroom discussion."""
 
     def __init__(self):
         self.discussion_calls: list[list[dict]] = []  # every request built by prompting.build_messages
+        self.grading_calls: list[dict] = []
 
     async def stream(self, messages, **kwargs):
         if isinstance(messages[0]["content"], list):
@@ -34,26 +42,42 @@ class FakeLLM:
     async def complete(self, messages, **kwargs):
         if isinstance(messages[0]["content"], str):  # the setup chat's closing message (baseline, plain strings)
             return json.dumps({"message": "교실을 준비할게요.", "done": True})
-        assert _role(messages) == "ROLE: hidden moderator. You only decide who speaks next; nobody sees your output."
         self.discussion_calls.append(messages)
+        if _role(messages) == EXTRACTOR:
+            return SITUATION
+        assert _role(messages).startswith("ROLE: hidden moderator.")
         allowed = "Invitation allowed now: yes" in messages[1]["content"][-1]["text"]
         return json.dumps({"speaker": "tutor", "invite_user": allowed})
 
     async def complete_json(self, messages, **kwargs):
-        system, user = messages[0]["content"], messages[-1]["content"]
-        if "design a simulated classroom" in system:
+        if _role(messages).startswith("You design a simulated classroom"):
             return {
                 "focus": "기울기가 무엇을 바꾸는가?",
                 "tutor": {"reference": REFERENCE, "key_points": ["각도", "낮 길이"]},
                 "peers": [
-                    {"name": "민준", "beliefs": [{"text": "궤도는 타원", "accuracy": "correct"}], "explanation": "가까워져서"},
-                    {"name": "서연", "beliefs": [{"text": "23.5도", "accuracy": "correct"}], "explanation": "기울어서"},
+                    {"name": "민준", "origin": "학습자의 설명", "description": "거리에 주목해요",
+                     "beliefs": [{"text": "태양에 가까워지면 여름이 돼요", "accuracy": "incorrect"}],
+                     "explanation": "지구가 가까워져서요", "explanation_accuracy": "incorrect"},
+                    {"name": "서연", "origin": "다른 설명", "description": "낮의 길이에 주목해요",
+                     "beliefs": [{"text": "낮이 길면 땅이 오래 데워져요", "accuracy": "correct"}],
+                     "explanation": "햇빛을 오래 받아서요", "explanation_accuracy": "partial"},
                 ],
             }
-        assert "track what one simulated student" in system
-        if "Student: 민준" not in user:
+        if _role(messages) == GRADER:
+            payload = json.loads(messages[-1]["content"])
+            self.grading_calls.append(payload)
+            return {"beliefs": [{"id": b["id"], "accuracy": "correct"} for b in payload["beliefs"]]}
+        assert _role(messages) == PROPOSER
+        self.discussion_calls.append(messages)
+        user = messages[-1]["content"]
+        latest_turn, tail = user[-2]["text"], user[-1]["text"]
+        if "Student: 민준" not in tail or not latest_turn.endswith(LEARNER_EVIDENCE):
             return {"changed": False}
-        return {"changed": True, "beliefs": [{"id": "new", "text": f"사실 {len(user)}"}], "explanation": "바뀜"}
+        return {
+            "changed": True,
+            "evidence": {"kind": "mechanism", "quote": LEARNER_EVIDENCE},
+            "belief_edits": [{"op": "add", "text": NEW_BELIEF}],
+        }
 
 
 @pytest.fixture
@@ -88,18 +112,34 @@ async def test_csl_discussion_flow_and_cache_layout(settings, store, fake_llm):
         assert len(speakers) >= 7 and speakers[-1] == "tutor"  # no invitation before turn 6
         assert s.last_message.meta == {"invite": True}
 
-        c.send("user.message", text="기울기 때문에 각도가 달라져요")
-        await c.until("message.completed", lambda d: d["message"]["role"] == "user")
+        c.send("user.message", text=LEARNER_EVIDENCE)
+        learner = (await c.until("message.completed", lambda d: d["message"]["role"] == "user"))["message"]
+        update = (await c.until("state.updated"))["update"]
+        assert (update["agentId"], update["version"], update["turnId"]) == ("peer1", 1, learner["id"])
+        assert [(ch["field"], ch["kind"]) for ch in update["changes"]] == [("beliefs", "added")]
+        added = update["state"]["beliefs"][-1]
+        assert (added["text"], added["accuracy"]) == (NEW_BELIEF, "correct")
+        assert fake_llm.grading_calls == [{
+            "reference": REFERENCE,
+            "beliefs": [{"id": added["id"], "text": NEW_BELIEF}],
+        }]
+        assert len(s.state_history("peer2")) == 1
         react = (await c.until("message.completed"))["message"]
         feedback = (await c.until("message.completed"))["message"]
         assert react["role"] == "peer" and feedback["role"] == "tutor"
 
         calls = fake_llm.discussion_calls
         assert len(calls) >= 10
-        # Hidden reference: only in the tutor's role block, never in anything a peer or the moderator gets.
         for m in calls:
             role, flat = _role(m), json.dumps(m, ensure_ascii=False)
             assert (REFERENCE in flat) == (role == "ROLE: the tutor."), role
+            is_peer = role.startswith("ROLE: one of the students.")
+            assert (SITUATION in _texts(m)[-1]) == is_peer
+            assert SITUATION not in json.dumps(m[0], ensure_ascii=False)
+            assert all(SITUATION not in block for block in _texts(m)[:-1])
+            if role == EXTRACTOR:
+                for private in ("거리에 주목해요", "태양에 가까워지면 여름이 돼요", "낮이 길면 땅이 오래 데워져요"):
+                    assert private not in flat
         # Learner messages are rendered with the learner label and the invitation note.
         assert any("[T" in t and "학습자 (answering the tutor's invitation): 기울기" in t for t in _texts(calls[-1]))
 
@@ -109,7 +149,9 @@ async def test_csl_discussion_flow_and_cache_layout(settings, store, fake_llm):
         by_role: dict[str, list] = {}
         for m in calls:
             by_role.setdefault(_role(m), []).append(m)
-        assert len(by_role) == 3  # moderator, peer, tutor
+        assert len(by_role) == 5 and {PROPOSER, EXTRACTOR} <= by_role.keys()
+        peer_requests = next(reqs for role, reqs in by_role.items() if role.startswith("ROLE: one of the students."))
+        assert len(by_role[EXTRACTOR]) == len(peer_requests)
         for role, reqs in by_role.items():
             for prev, cur in zip(reqs, reqs[1:]):
                 assert prev[0] == cur[0], role
@@ -120,7 +162,7 @@ async def test_csl_discussion_flow_and_cache_layout(settings, store, fake_llm):
             assert cache_breakpoints(m) <= 4
             assert "cache_control" not in m[1]["content"][-1]  # the tail is never cached
             # Persona and state go in the tail, so all peers share the cached part.
-            assert all(name not in m[0]["content"][1]["text"] for name in ("민준", "서연", "궤도는 타원"))
+            assert all(name not in m[0]["content"][1]["text"] for name in ("민준", "서연", "태양에 가까워지면"))
     finally:
         await registry.stop()
 

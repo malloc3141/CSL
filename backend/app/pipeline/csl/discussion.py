@@ -15,8 +15,10 @@ All of this is read fresh from the full transcript on every call, so nothing has
 turns: neither method may change anything (base.py), because the server may throw a prepared turn away.
 Rule-based shortcuts handle the learner's messages and the closing, as before.
 
-Every LLM call is assembled by prompting.build_messages so the session block, the role block and the
-transcript prefix are byte-identical from one call to the next, and the prompt cache can serve them.
+Before a peer speaks, a neutral reader identifies the situation in the public exchange. The
+result and that peer's current understanding go in the private tail of the response request.
+Every discussion request uses prompting.build_messages. The session block is shared across roles.
+Within a role, the system blocks are stable and the rendered transcript grows by appending turns.
 The full transcript is sent (no sliding window): at MAX_TURNS=60 it stays a few thousand tokens.
 """
 from __future__ import annotations
@@ -30,6 +32,8 @@ from ...llm import extract_json, get_llm
 from ...protocol import KnowledgeState, Message
 from ...session import Session
 from ..base import SpeakerDecision, TextSink
+from . import knowledge
+from ._peer_speech import PeerSpeechSink
 from .prompting import LANG, USER_LABEL, build_messages, session_block
 
 log = logging.getLogger("csl.discussion")
@@ -63,9 +67,12 @@ Output a single JSON object and nothing else:
 
 PEER_ROLE = """ROLE: one of the students. The instruction after the discussion says which student you are and gives that student's current understanding.
 
-Stay strictly inside that understanding. Reason from it, defend it, or doubt it when someone gives you a concrete reason. Never state a fact or mechanism that is neither in your understanding nor already said in the discussion. You may be wrong without knowing it.
+Use only your assigned understanding and the public discussion as factual premises. You can work out a prediction from them. An outside fact, date, or measurement you happen to know is unavailable to this student unless a premise supplies it.
+You are a student discussing the case. People mentioned in the topic are people you are reasoning about. You took part in an event only if your assigned understanding or the public discussion explicitly says you did. When a belief has no stated source, give your own judgment in the first person singular: "I think that applies here." If challenged, "That was my assumption. What makes you doubt it?" You may be wrong without knowing it.
+Treat a group's habits, a previous decision, and a firsthand observation as distinct factual claims. Only mention one when you can point to where that history was supplied, with the original speaker correctly attributed. Framing an invented account as an assumption still invents an account.
+When a concrete example or observation challenges your belief, reconsider the part it bears on. If you infer something new, explain which details support that step. If the evidence only shows a problem with your idea, say what you now doubt and leave the missing explanation open.
 If someone asked you something and it has not been answered yet, answer it first, or say why you cannot answer it yet.
-Do not repeat a question you or others already asked; if you are still stuck on it, say what exactly blocks you or try a guess.
+If you are still stuck on a question that was already asked, say exactly what information is missing.
 
 Write only your next message: 1-3 sentences, in the discussion language, conversational, no lists. Start directly with what you say: no name, no "[T..]" label, no "Name:" prefix (those labels only mark messages in the record above)."""
 
@@ -183,7 +190,9 @@ def _respond_to_text(session: Session, decision: SpeakerDecision) -> str:
     )
 
 
-def speak_request(session: Session, decision: SpeakerDecision) -> list[dict[str, Any]]:
+def speak_request(
+    session: Session, decision: SpeakerDecision, *, peer_context: str | None = None
+) -> list[dict[str, Any]]:
     agent = session.participant(decision.agent_id or "")
     if agent is None:
         raise ValueError(f"unknown speaker {decision.agent_id!r}")
@@ -200,15 +209,19 @@ def speak_request(session: Session, decision: SpeakerDecision) -> list[dict[str,
         tail = tail.lstrip()
     else:
         role = PEER_ROLE
-        state = session.state_of(agent.id) or KnowledgeState()
-        lines = [PEER_DIRECTIVES.get(decision.directive or "", ""), respond]
-        extra = "\n".join(x for x in lines if x)
-        tail = (
-            f"You are {agent.name} ({agent.id}). This is everything you currently believe about the topic; "
-            f"you know nothing beyond it and what was said above.\n{_state_text(state)}\n\n"
-            f"{extra + chr(10) if extra else ''}"
-            f"Write {agent.name}'s next message, in {lang}."
-        )
+        if peer_context is None:
+            peer_context = _state_text(session.state_of(agent.id) or KnowledgeState())
+        lines = [
+            f"You are {agent.name} ({agent.id}).",
+            peer_context,
+            PEER_DIRECTIVES.get(decision.directive or "", ""),
+            respond,
+            f"Write {agent.name}'s reply in {lang}. Give your judgment about this case in one short sentence. "
+            "Add a reason from your supplied beliefs, an attributed piece of evidence, or a question if needed. "
+            "If the reply mentions a past experience or habit, use a direct quotation of the source words "
+            "that establish it. Otherwise leave the account of past behavior out.",
+        ]
+        tail = "\n".join(line for line in lines if line)
     return build_messages(_session_block(session), role, session.transcript, session.language, tail)
 
 
@@ -264,13 +277,6 @@ class _PrefixStripper:
             self.done = True
             if self.buffer:
                 await self.out.write(self.buffer)
-
-
-def _strip_names(session: Session, agent_id: str) -> list[str]:
-    agent = session.participant(agent_id)
-    if agent is None:
-        return []
-    return [agent.name, agent.id]
 
 
 # ---------------------------------------------------------------- pipeline methods
@@ -356,10 +362,22 @@ def _already_taken_up(transcript: list[Message], turn: Optional[int]) -> bool:
 
 
 async def speak(session: Session, decision: SpeakerDecision, out: TextSink) -> None:
-    sink = _PrefixStripper(out, _strip_names(session, decision.agent_id or ""))
-    async for chunk in get_llm().stream(speak_request(session, decision), temperature=0.8, max_tokens=400):
+    agent = session.participant(decision.agent_id or "")
+    if agent is None:
+        raise ValueError(f"unknown speaker {decision.agent_id!r}")
+    peer_context = None
+    if agent.role == "peer":
+        peer_context = await knowledge.prepare_peer_context(
+            session, agent.id, respond_to=decision.meta.get("respondTo")
+        )
+    request = speak_request(session, decision, peer_context=peer_context)
+    peer_sink = PeerSpeechSink(session, agent.id, out) if agent.role == "peer" else None
+    sink = _PrefixStripper(peer_sink or out, [agent.name, agent.id])
+    async for chunk in get_llm().stream(request, temperature=0.8, max_tokens=400):
         await sink.write(chunk)
     await sink.flush()
+    if peer_sink is not None:
+        await peer_sink.flush()
 
 
 __all__ = ["select_speaker", "speak", "moderator_request", "speak_request", "rotate", "USER_LABEL"]
