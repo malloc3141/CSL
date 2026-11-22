@@ -155,13 +155,32 @@ async def test_speech_uses_the_current_belief_after_a_challenge_and_each_state_u
         request = stream.call_args.args[0]
         transcript, tail = request[-1]["content"][:-1], request[-1]["content"][-1]["text"]
         assert challenge in transcript[-1]["text"]
-        assert "An active belief is still yours" in request[0]["content"][1]["text"]
-        assert "speak from the beliefs and explanation above" in tail.lower()
         for belief in (original, unrelated, revised):
             assert (belief.text in tail) == (belief in beliefs)
         assert "accuracy" not in tail and original.id not in tail
         assert "PRIVATE-KEY" not in json.dumps(request)
     assert stream.call_count == 3
+
+
+async def test_speech_applies_an_explanation_only_limit_until_the_explanation_changes(session, stream):
+    session.transcript[-1].text = "Could a change of tense mark a new speaker?"
+    belief = Belief(id="voice", text="A poem can contain several voices.")
+    original = "I count a new speaker only when a different name appears."
+    revised = "I also count a new speaker when an unnamed voice answers the first."
+    session.states["peer1"] = []
+    for version, (expected, absent) in enumerate(((original, revised), (revised, original))):
+        session.states["peer1"].append(StateVersion(
+            agent_id="peer1", version=version, created_at=version,
+            state=KnowledgeState(beliefs=[belief], explanation=expected),
+        ))
+        await CslPipeline().speak(session, SpeakerDecision(agent_id="peer1"), SimpleNamespace(write=AsyncMock()))
+        request = stream.call_args.args[0]
+        role = request[0]["content"][1]["text"]
+        tail = request[-1]["content"][-1]["text"]
+        assert "A condition stated only in the explanation still applies" in role
+        assert belief.text in tail and absent not in tail
+        assert f"Current explanation: {expected}\nWrite Min's reply" in tail
+        assert "both your beliefs and your current explanation" in tail
 
 
 @pytest.mark.parametrize("state", [

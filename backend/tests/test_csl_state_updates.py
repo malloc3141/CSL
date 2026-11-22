@@ -171,6 +171,36 @@ async def test_external_observation_can_contradict_a_peers_own_quoted_prediction
     assert update.state.beliefs[0].text == REVISED_RULE and len(tracker.graded) == 1
 
 
+async def test_listener_revision_reconciles_repeated_claims_and_is_not_saved_twice(classroom, tracker):
+    current = classroom.states["peer1"][-1].state
+    unaffected = current.beliefs[1]
+    duplicate = Belief(id="duplicate", text="If I know the printed date, I know when the object was made.")
+    current.beliefs.append(duplicate)
+    other_rule = "I trust a creation date if the author's seal appears next to it."
+    classroom.states["peer2"][-1].state.explanation = other_rule
+    revise = {"op": "revise", "id": LEGACY_ID, "text": REVISED_RULE}
+    learner = commit(classroom, EVIDENCE + " What does that tell us?")
+    tracker.by_student["peer1"] = proposal(belief_edits=[revise, {"op": "remove", "id": duplicate.id}],
+                                          explanation=REVISED_RULE)
+    [update] = await CslPipeline().update_states(classroom, learner)
+    assert update.agent_id == "peer1"
+    assert update.state.beliefs == [Belief(id=LEGACY_ID, text=REVISED_RULE, accuracy="partial"), unaffected]
+    assert update.state.explanation == REVISED_RULE
+    assert tracker.calls.keys() == {"peer1", "peer2"}
+    assert other_rule in json.dumps(tracker.calls["peer2"]) and other_rule not in json.dumps(tracker.calls["peer1"])
+    classroom.states["peer1"].append(StateVersion(agent_id="peer1", version=2, state=update.state, created_at=2.0))
+
+    reply = commit(classroom, "That ledger's card cannot tell me the date of writing.", speaker="peer1")
+    tracker.by_student["peer1"] = proposal(
+        evidence={"kind": "reasoning", "turn_number": learner.turn_number, "quote": EVIDENCE, "latest_quote": reply.text},
+        belief_edits=[revise], explanation=REVISED_RULE,
+    )
+    events = []
+    classroom.log = lambda kind, data: events.append((kind, data))
+    assert await CslPipeline().update_states(classroom, reply) == []
+    assert events[0][1]["reason"] == "no_new_evidence" and len(tracker.graded) == 1
+
+
 async def test_doubt_about_an_existing_claim_cannot_supply_a_counterexample(classroom, tracker):
     latest = commit(classroom, "I disagree. Are you sure about the date on a card?")
     # The model cited just the topic of the challenge as though it were an observation.
@@ -398,18 +428,24 @@ async def test_removal_only_preserves_the_remaining_label_and_skips_grading(clas
     assert not tracker.graded
 
 
+@pytest.mark.parametrize("earlier_first", [False, True])
 @pytest.mark.parametrize("paraphrased", [False, True])
-async def test_reasoned_interpretation_can_be_recorded_with_no_accuracy_label(classroom, tracker, paraphrased):
+async def test_reasoned_interpretation_can_be_recorded_with_no_accuracy_label(classroom, tracker, paraphrased, earlier_first):
     premise = "Both cards have the same initial."
     earlier = commit(classroom, premise, speaker="tutor")
     reasoning = "The two cards use the same initial, so I would check whether they refer to one collection."
     interpretation = "I use repeated initials as a lead when comparing cards."
     source_excerpt = "The initials on the cards match." if paraphrased else premise
+    if earlier_first:
+        evidence = {"kind": "reasoning", "turn_number": earlier.turn_number, "quote": source_excerpt, "latest_quote": reasoning}
+        support_field = "evidence.quote"
+    else:
+        evidence = {"kind": "reasoning", "quote": reasoning, "support": {"turn_number": earlier.turn_number, "quote": source_excerpt}}
+        support_field = "evidence.support.quote"
     events = []
     classroom.log = lambda kind, data: events.append((kind, data))
     tracker.by_student["peer1"] = proposal(
-        evidence={"kind": "reasoning", "quote": reasoning,
-                  "support": {"turn_number": earlier.turn_number, "quote": source_excerpt}},
+        evidence=evidence,
         belief_edits=[{"op": "add", "text": interpretation}],
         explanation=interpretation,
     )
@@ -423,9 +459,22 @@ async def test_reasoned_interpretation_can_be_recorded_with_no_accuracy_label(cl
     assert update.state.beliefs[-1].text == interpretation and update.state.beliefs[-1].accuracy is None
     [(kind, citation)] = events
     assert kind == "state.proposal_citation"
-    assert citation["citedTurnNumber"] == citation["turnNumber"] == 2
+    assert citation["turnNumber"] == 2
+    assert citation["citedTurnNumber"] == (earlier.turn_number if earlier_first else 2)
     assert citation["supportTurnNumber"] == earlier.turn_number
-    assert set(citation["mismatchedFields"]) == ({"evidence.support.quote"} if paraphrased else set())
+    assert set(citation["mismatchedFields"]) == ({support_field} if paraphrased else set())
+    # The model sees a two-part evidence example only when tracking the current speaker.
+    example_prefix = "with changed and evidence exactly as nested here: "
+    for peer_id in ("peer1", "peer2"):
+        tail = tracker.calls[peer_id][-1]["content"][-1]["text"]
+        response, _ = json.JSONDecoder().raw_decode(tail.split(example_prefix)[1])
+        assert response["changed"] is True
+        example = response["evidence"]
+        assert example["turn_number"] == 2
+        if peer_id == "peer1":
+            assert example["support"]["turn_number"] == earlier.turn_number
+        else:
+            assert "support" not in example
     assert update.state.explanation == interpretation and update.state.explanation_accuracy is None
 
 
@@ -482,6 +531,7 @@ async def test_exact_self_repetition_does_not_bootstrap_a_change(classroom, trac
     None,
     {"turn_number": 1, "quote": "I've wondered whether staff share a habit."},  # own earlier statement
     {"turn_number": 2, "quote": "Everyone here shares a habit."},  # actual message only disagreed
+    {"turn_number": 2, "quote": "I disagree."},  # an exact citation can still lack a premise
     {"turn_number": 8, "quote": "Everyone here shares a habit."},  # attributed turn does not exist
     {"turn_number": 3, "quote": "Maybe the staff share a habit."},  # this turn
     {"turn_number": None, "quote": QUESTION},  # a question in memory is not a factual premise
@@ -505,6 +555,38 @@ async def test_own_speculation_requires_independent_public_support(classroom, tr
     [update] = await CslPipeline().update_states(classroom, message)
     assert update.agent_id == "peer2" and update.state.open_questions == [question]
     assert not tracker.graded
+
+
+@pytest.mark.parametrize(("prior", "speaker", "has_trigger", "reason"), [
+    (EVIDENCE, "peer1", True, "no_independent_premise"),
+    ("I agree.", "tutor", True, "no_independent_premise"),
+    (EVIDENCE, "tutor", False, "no_new_evidence"),
+])
+async def test_earlier_first_citations_need_a_premise_and_trigger(classroom, tracker, prior, speaker, has_trigger, reason):
+    earlier = commit(classroom, prior, speaker=speaker)
+    latest = commit(classroom, "Then a card date can describe cataloging.", speaker="peer1")
+    evidence = {"kind": "reasoning", "turn_number": earlier.turn_number, "quote": earlier.text}
+    if has_trigger:
+        evidence["latest_quote"] = latest.text
+    tracker.by_student["peer1"] = proposal(evidence=evidence, explanation=REVISED_RULE)
+    events = []
+    classroom.log = lambda kind, data: events.append((kind, data))
+    assert await CslPipeline().update_states(classroom, latest) == []
+    assert events[0][1]["reason"] == reason and not tracker.graded
+
+
+async def test_later_observation_cannot_justify_an_earlier_reply(classroom, tracker):
+    reply = commit(classroom, "Then a card can give the catalog date.", speaker="peer1")
+    later = commit(classroom, EVIDENCE)
+    tracker.by_student["peer1"] = proposal(
+        evidence={"kind": "reasoning", "quote": reply.text, "support": {"turn_number": later.turn_number, "quote": EVIDENCE}},
+        explanation=REVISED_RULE,
+    )
+    events = []
+    classroom.log = lambda kind, data: events.append((kind, data))
+    assert await CslPipeline().update_states(classroom, reply) == []
+    assert EVIDENCE not in json.dumps(tracker.calls["peer1"])
+    assert events[0][1]["reason"] == "invalid_turn" and not tracker.graded
 
 
 async def test_student_can_infer_from_their_existing_reasoning(classroom, tracker):

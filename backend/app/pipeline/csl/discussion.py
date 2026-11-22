@@ -70,7 +70,7 @@ PEER_ROLE = """ROLE: one of the students. The instruction after the discussion s
 Use only your assigned understanding and the public discussion as factual premises. You can work out a prediction from them. An outside fact, date, or measurement you happen to know is unavailable to this student unless a premise supplies it.
 You are a student discussing the case. People mentioned in the topic are people you are reasoning about. You took part in an event only if your assigned understanding or the public discussion explicitly says you did. When a belief has no stated source, give your own judgment in the first person singular: "I think that applies here." If challenged, "That was my assumption. What makes you doubt it?" You may be wrong without knowing it.
 Treat a group's habits, a previous decision, and a firsthand observation as distinct factual claims. Only mention one when you can point to where that history was supplied, with the original speaker correctly attributed. Framing an invented account as an assumption still invents an account.
-An active belief is still yours, even when someone challenges it. Reason from your current understanding. You can acknowledge an observation, explain what you would predict, or ask how the two fit together. Do not declare your belief wrong or adopt someone else's explanation unless your supplied understanding already reflects that specific revision.
+Your beliefs and your current explanation together describe what you think. A condition stated only in the explanation still applies when answering a classmate. If it says something starts, stops, or applies only in a particular case, keep that limit in your answer. You can acknowledge what someone observed, predict what you expect, or ask how the two fit together. Only give a different explanation as your own when your supplied understanding supports it.
 If someone asked you something and it has not been answered yet, answer it first, or say why you cannot answer it yet.
 If you are still stuck on a question that was already asked, say exactly what information is missing.
 
@@ -213,13 +213,14 @@ def speak_request(
             peer_context = _state_text(session.state_of(agent.id) or KnowledgeState())
         lines = [
             f"You are {agent.name} ({agent.id}).",
-            peer_context,
             PEER_DIRECTIVES.get(decision.directive or "", ""),
             respond,
-            f"Write {agent.name}'s reply in {lang}. Give your judgment about this case in one short sentence. "
-            "Add a reason from your supplied beliefs, an attributed piece of evidence, or a question if needed. "
-            "If the reply mentions a past experience or habit, use a direct quotation of the source words "
-            "that establish it. Otherwise leave the account of past behavior out.",
+            peer_context,
+            f"Write {agent.name}'s reply in {lang}. Read both your beliefs and your current explanation. "
+            "Choose the part that directly bears on the question. In your first sentence, use that idea "
+            "to answer in your own words, keeping exactly when, why and whether you think it holds. "
+            "If your understanding leaves part of the question open, say what you cannot tell yet. "
+            "Speak only the reply.",
         ]
         tail = "\n".join(line for line in lines if line)
     return build_messages(_session_block(session), role, session.transcript, session.language, tail)

@@ -22,14 +22,14 @@ log = logging.getLogger("csl.knowledge")
 PROPOSAL_ROLE = """ROLE: public knowledge-state proposer.
 Track one student's learning using only their current understanding and the public exchange. Cite new evidence in the latest message for each change. A question, confidence, bare disagreement ("Are you sure?"), or a concession without a reason normally means {"changed":false}. A student restating a conclusion they already hold, even in different words, acting on it, or proposing a new procedure without supporting evidence also means {"changed":false}. A tutor asking whether something is true has not stated it as a fact. Never guess an alternative mechanism, category, or policy to fill a gap.
 
-First try to answer the latest message using the stored belief and explanation exactly as they stand. An answer of "the information given is insufficient" is a successful application of that understanding. Keep the state unchanged if the new case fits it. A new object's name, an inference about that object, and the absence of a measurement do not establish a new general requirement. Missing evidence can matter when its absence itself contradicts an expectation in the stored state. Cite the new outcome or premise that changes the student's reasoning, without quoting the accompanying question as evidence.
+First try to answer the latest message using the stored belief and explanation exactly as they stand. An answer of "the information given is insufficient" is a successful application of that understanding. Keep the state unchanged if the new case fits it. For a student reasoning from a different, unreported property, “I cannot decide from this example” is precisely what their model already predicts. Leave that rule and its confidence intact. If instead the rule predicts an outcome contradicted by the reported facts, update the listener now; a spoken reaction is unnecessary. A new object's name, an inference about that object, and the absence of a measurement do not establish a new general requirement. Missing evidence can matter when its absence itself contradicts an expectation in the stored state. Cite the new outcome or premise that changes the student's reasoning, without quoting the accompanying question as evidence.
 
 A concrete observation, example, reasoning, interpretation, mechanism, counterexample, or tutor-stated fact can justify a specific change. One counterexample disproves the original rule's universal claim. Record the observation and the limit it establishes (for example, one condition alone was insufficient in that case). Leave open whether any condition is necessary, what policy applies elsewhere, or whether another source is generally authoritative. Do not infer a universal replacement rule, mandatory sequence, or requirement to check both conditions from one case. Preserve all unrelated ideas. If the student explicitly voices their own uncertainty without new evidence, the only allowed edit is to add a question they actually asked, quoted verbatim. Another speaker doubting the student does not establish that the student is uncertain. Write learner-visible text in the discussion language.
 
 On the tracked student's own turn, their latest words alone cannot substantiate a change. A tentative idea, self-generated experience, or proposed procedure cannot provide its own evidence. For a substantive inference, also supply evidence.support as {"turn_number":null,"quote":"exact premise from the student's pre-turn beliefs or explanation"} or {"turn_number":3,"quote":"exact premise from a different speaker at that earlier turn"}. Cite a premise that actually supports the new claim, with its original scope and degree of certainty. A similar topic, a question, or a statement that something might happen does not establish that it did. If the conclusion is already captured in the current state, or there is no independent premise, return {"changed":false}. Only the explicit uncertainty question described above is exempt.
 
-Return {"changed":false} or a JSON object with changed:true and evidence. Choose one evidence kind: observation, example, reasoning, interpretation, mechanism, counterexample, tutor_fact, or uncertainty. Copy a short, exact quote from a real public turn. Use the latest turn by default. To cite an earlier turn, set evidence.turn_number to that turn, copy its words to evidence.quote, and give a second exact excerpt in evidence.latest_quote showing what the latest message newly establishes. Old evidence plus a new challenge or application is still unchanged. evidence.support has the separate purpose of establishing an independent premise on the student's own turn.
-For changed:true write the evidence object first, then the smallest edit it supports. On another speaker's turn the public observation itself is the premise. Omit support. Leave the question list alone unless a particular open question was answered; a resolution must copy the entire existing question exactly. Omit question_edits when unsure.
+Return {"changed":false} or a JSON object containing changed:true and evidence. Choose one evidence kind: observation, example, reasoning, interpretation, mechanism, counterexample, tutor_fact, or uncertainty. Use the evidence format in the current student's request.
+For changed:true write the evidence object first, then the smallest complete edit it supports. Read every surviving belief and the whole explanation. Rewrite each active assertion of the failed prediction, including duplicates. Keep facts that remain true and preserve unrelated claims. In the explanation, state the revised view in the student's voice; identify the former prediction as such if you mention it. On another speaker's turn the public observation itself is the premise. Omit support. Leave the question list alone unless a particular open question was answered; a resolution must copy the entire existing question exactly. Omit question_edits when unsure.
 For changed:true include only the applicable edits:
 - belief_edits: a list of {"op":"revise","id":"existing id","text":"revised belief"}, {"op":"remove","id":"existing id"}, or {"op":"add","text":"new belief"}. Preserve the ID of a revised belief. An add has exactly op and text; the system allocates its ID.
 - explanation: the revised explanation.
@@ -175,7 +175,8 @@ def _apply(session: Session, peer_id: str, current: KnowledgeState, delta: _Prop
 def _check_evidence(
     proposal: _Proposal, turns: dict[int, Message], latest: Message, peer: Participant, current: KnowledgeState,
     mismatches: list[str],
-) -> None:
+) -> int | None:
+    """Validate the proposal and return its supporting public turn, if any."""
     evidence = proposal.evidence
     source = latest if evidence.turn_number is None else turns.get(evidence.turn_number)
     if source is None:
@@ -207,24 +208,29 @@ def _check_evidence(
             raise _Rejected("no_new_evidence", "this student repeated their existing statement")
     premise = evidence.support
     if premise is None:
-        if own_inference:
+        if not own_inference:
+            return None
+        if source.id == latest.id:
             raise _Rejected("no_independent_premise", "this student's inference lacks independent support")
-        return
-    if premise.turn_number is None:
+        # Earlier-first citation: its quote and the latest trigger were checked above.
+        support = source
+    elif premise.turn_number is None:
         if not any(premise.quote in text for text in prior_state):
             raise _Rejected("no_independent_premise", "support is absent from this student's pre-turn beliefs or explanation")
-        return
-    support = turns.get(premise.turn_number)
-    if support is None:
-        raise _Rejected("invalid_turn", "cited support turn is absent from the public transcript")
+        return None
+    else:
+        support = turns.get(premise.turn_number)
+        if support is None:
+            raise _Rejected("invalid_turn", "cited support turn is absent from the public transcript")
+        if premise.quote not in support.text:
+            mismatches.append("evidence.support.quote")
     if support.id == latest.id:
         raise _Rejected("no_independent_premise", "a supporting citation must precede the latest turn")
     if own_inference and support.speaker_id == peer.id:
         raise _Rejected("no_independent_premise", "the student's prior speech is not an independent premise")
-    if premise.quote not in support.text:
-        mismatches.append("evidence.support.quote")
-        if own_inference and _bare_response(support.text, current):
-            raise _Rejected("no_independent_premise", "agreement or doubt alone cannot support this inference")
+    if own_inference and _bare_response(support.text, current):
+        raise _Rejected("no_independent_premise", "agreement or doubt alone cannot support this inference")
+    return support.turn_number
 
 
 async def _propose(
@@ -235,20 +241,40 @@ async def _propose(
         "explanation": current.explanation,
         "open_questions": current.open_questions,
     }
-    transcript = session.transcript
+    transcript = [m for m in session.transcript if message.turn_number is None
+                  or m.turn_number is None or m.turn_number <= message.turn_number]
     turns = {m.turn_number: m for m in transcript if m.turn_number is not None}
-    example = {"kind": "observation", "turn_number": message.turn_number, "quote": "<copy the exact excerpt>"}
+    own_turn = message.speaker_id == peer.id
+    if own_turn:
+        earlier = next((n for n in reversed(turns) if turns[n].speaker_id != peer.id), None)
+        premise = "<relevant premise from that speaker>" if earlier is not None else "<premise from the pre-turn state>"
+        example = {"kind": "reasoning", "turn_number": message.turn_number, "quote": "<the student's new inference>",
+                   "support": {"turn_number": earlier, "quote": premise}}
+        guidance = (
+            f"The main quote is what {peer.name} newly works out in T{message.turn_number}. Put the earlier "
+            "observation that warrants this inference in the nested support object. If they merely use a limit "
+            "already recorded or only voice doubt, leave their beliefs and explanation as they stand."
+        )
+    else:
+        example = {"kind": "observation", "turn_number": message.turn_number, "quote": "<reported outcome or premise>"}
+        guidance = (
+            f"First answer the speaker's question from {peer.name}'s own current understanding. If it already "
+            "accounts for the observation, or this student's test needs information the speaker never gave, "
+            'return {"changed":false}. If a definite prediction fails against an actual observation, revise now.'
+        )
+    worked_change = {"changed": True, "evidence": example,
+                     "explanation": "<only if affected: the student's complete revised explanation>"}
     tail = (
         f"Student: {peer.name} ({peer.id})\n"
         f"Current state:\n{json.dumps(public_state, ensure_ascii=False)}\n"
         f"Valid public turn numbers: {list(turns)}.\n"
         f"Latest message: [T{message.turn_number}] by {message.speaker_name} ({message.speaker_id}, role: {message.role}, "
-        f"this student: {'yes' if message.speaker_id == peer.id else 'no'}).\n"
-        f"Example evidence object for this turn: {json.dumps(example)}.\n"
-        'Check the difference before writing any edits. If the student believes "A alone cannot settle B" '
-        'and someone asks "A holds for a new case. Can we decide B?", return {"changed":false}. '
-        'The new case has no known outcome. If the student believes "A always implies B" and someone '
-        'reports a case of A with B observed false, revise that specific belief. Return the JSON decision.'
+        f"this student: {'yes' if own_turn else 'no'}).\n{message.text}\n"
+        f"{guidance}\n"
+        'Return {"changed":false} immediately if their understanding still holds. Otherwise start the JSON '
+        f'with changed and evidence exactly as nested here: {json.dumps(worked_change)}. '
+        'Include belief_edits for each affected belief. Preserve independent facts even if an inference from them fails. '
+        'Omit question_edits unless a particular question was answered or this student has asked a new one.'
     )
     messages = build_messages(
         session_block(session.topic, session.focus, session.language, session.participants),
@@ -270,14 +296,14 @@ async def _propose(
         if data.get("changed") is not True:
             raise _Rejected("schema", "changed must be a boolean")
         proposal = _Proposal.model_validate(data)
-        _check_evidence(proposal, turns, message, peer, current, mismatches)
+        support_turn = _check_evidence(proposal, turns, message, peer, current, mismatches)
         updated = _apply(session, peer.id, current, proposal)
         if updated == current:
             raise _Rejected("no_new_evidence", "proposed edits leave the state identical")
         citation = {**event, "citedTurnNumber": event.get("citedTurnNumber", message.turn_number),
                     "mismatchedFields": mismatches}
-        if proposal.evidence.support is not None and proposal.evidence.support.turn_number is not None:
-            citation["supportTurnNumber"] = proposal.evidence.support.turn_number
+        if support_turn is not None:
+            citation["supportTurnNumber"] = support_turn
         session.log("state.proposal_citation", citation)
         return updated
     except ValidationError as exc:
