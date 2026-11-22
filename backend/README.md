@@ -24,12 +24,12 @@ browser ── REST + WebSocket ──> FastAPI (one process)
 | `app/openrouter.py` | OpenRouter model list (prices) and key spend, for the admin page. |
 | `app/pipeline/base.py` | The interface the agent code implements. |
 | `app/pipeline/mock.py` | Scripted lo-fi scenario, no LLM. For frontend work and tests. |
-| `app/pipeline/baseline.py` | Simple reference pipeline on OpenRouter. The server's default, and what the csl pipeline's knowledge side still calls. |
-| `app/pipeline/csl/` | The team's pipeline, registered as `csl`. `discussion.py`: who speaks next and what they say. `knowledge.py`: setup chat, classroom, knowledge states (currently calls the baseline). `prompting.py`: request assembly laid out for the prompt cache. |
+| `app/pipeline/baseline.py` | Simple reference pipeline on OpenRouter. The csl pipeline calls its setup chat and its classroom call. |
+| `app/pipeline/csl/` | The team's pipeline, registered as `csl`; the live server's default. `discussion.py`: who speaks next and what they say. `knowledge.py`: setup chat and classroom (the baseline's code plus csl's rules), what a peer is given before it speaks. `_state_updates.py`: knowledge-state updates (edits with quoted evidence, checked in code, then graded). `_peer_speech.py`: drops sentences in which a peer claims an experience nobody stated. `prompting.py`: request assembly laid out for the prompt cache. |
 | `app/llm.py` | OpenRouter client: streaming, JSON calls, retries, per-call usage, cost and cache log, runtime model override. Sends the session id with every call so one session stays on one provider (prompt cache). |
 | `scripts/cli.py` | Run a session in the terminal, without server or frontend. |
 | `scripts/gen_ts.py` | Regenerate `frontend/src/lib/csl/protocol.ts` after changing `protocol.py`. |
-| `tests/` | 48 tests, no network: orchestrator, REST/WebSocket, baseline, csl and LLM client with fakes, admin API, per-session pipelines, users. |
+| `tests/` | 153 tests, no network: orchestrator, REST/WebSocket, baseline, csl (discussion, classroom, state updates, peer context) and LLM client with fakes, admin API, per-session pipelines, users. |
 
 ## Run
 
@@ -43,7 +43,7 @@ uv run pytest
 uv run python scripts/cli.py "Why is summer hotter than winter?"
 ```
 
-To use real models set `PIPELINE=baseline`, `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env`.
+To use real models set `PIPELINE=csl` (or `baseline`), `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env`.
 To use your own pipeline set `PIPELINE=your.module:YourPipeline` (see [docs/PIPELINE.md](docs/PIPELINE.md)).
 The module is imported with `backend/` as the working directory, so `backend/app/pipeline/mine.py` is
 `PIPELINE=app.pipeline.mine:MyPipeline`. The pipeline is loaded once at startup; changing it needs a restart.
@@ -66,7 +66,7 @@ The ones that matter in production:
 
 | Variable | Meaning |
 | --- | --- |
-| `PIPELINE` | `mock` (default), `baseline` or `module:Class`. |
+| `PIPELINE` | `mock` (default), `baseline`, `csl` (the live server's setting) or `module:Class`. |
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_MODEL_FAST` | Needed unless `PIPELINE=mock`. The fast model is used for calls made with `fast=True` and falls back to the main one. Both ids can be switched from the admin page without a restart. |
 | `PEER_COUNT` | Number of peers the baseline pipeline creates (default 2). |
 | `CORS_ORIGINS` | Origins allowed to call the API and open the WebSocket. |
@@ -110,8 +110,8 @@ The ones that matter in production:
     (`usage.prompt_tokens_details.cached_tokens`, logged as `cachedTokens`) divided by the input tokens of
     the calls that reported that figure. Older calls, logged before this was recorded, are left out.
     Some providers, Anthropic among them, only cache when the request asks for it (`cache_control`). The
-    csl pipeline's discussion calls do (`app/pipeline/csl/prompting.py`); the baseline, and with it csl's
-    state updates, does not, so those calls show 0%.
+    csl pipeline's discussion calls and state-update proposals do (`app/pipeline/csl/prompting.py`); the
+    baseline, and with it csl's setup chat and classroom call, does not, so those calls show 0%.
   - *Models*: switch `OPENROUTER_MODEL` / `OPENROUTER_MODEL_FAST` without a restart. The override is stored in
     the `config` table of the SQLite database and survives restarts; empty fields fall back to `.env`. It
     applies from the next LLM call. Ids are checked against the OpenRouter model list. It does nothing while

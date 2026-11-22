@@ -21,8 +21,9 @@ class MyPipeline:
 ```
 
 `app/pipeline/baseline.py` is a complete example on OpenRouter; `mock.py` is one without an LLM.
-`app/pipeline/csl/` is the team's pipeline: one class whose methods call into `knowledge.py` and
-`discussion.py`, with the request layout for the prompt cache in `prompting.py`.
+`app/pipeline/csl/` is the team's pipeline: one class whose methods call into `knowledge.py` (setup chat,
+classroom, a peer's context before it speaks), `_state_updates.py` (`update_states`) and `discussion.py`,
+with the request layout for the prompt cache in `prompting.py`.
 
 The module is imported with `backend/` as the working directory: put the code under `backend/` (for
 example `backend/app/pipeline/mine.py` → `app.pipeline.mine:MyPipeline`). Extra Python packages go in

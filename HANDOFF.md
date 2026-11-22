@@ -1,6 +1,6 @@
 # HANDOFF
 
-Who works where, as of 2026-11-21. · 2026-11-21 기준, 누가 어디서 무엇을 작업하는지.
+Who works where, as of 2026-11-22. · 2026-11-22 기준, 누가 어디서 무엇을 작업하는지.
 
 **[한국어](#한국어)** · **[English](#english)** (same content in both)
 
@@ -12,12 +12,13 @@ Who works where, as of 2026-11-21. · 2026-11-21 기준, 누가 어디서 무엇
 
 - 실서버: **https://csl.kimhm.in** . `main`에 push하면 테스트와 빌드를 거쳐 자동 배포됩니다.
 - 서빙 레이어(세션, 읽기 속도 조절, 끼어들기, WebSocket, 저장, 이벤트 로그)는 완성되어 돌아가고 있습니다.
-- 에이전트: 팀 파이프라인 `csl`이 실서버에 올라가 있습니다(`/dev`의 Agents에서 `csl` 선택). 토론 부분
-  (`discussion.py`)은 구현되어 있고, 설정 대화와 knowledge state 부분(`knowledge.py`)은 아직 임시 구현
-  `baseline`을 그대로 호출합니다. 서버 기본값은 여전히 `PIPELINE=baseline`이고, 모델은 두 종류 모두
+- 에이전트: 팀 파이프라인 `csl`이 **11-22부터 서버 기본값**입니다(`PIPELINE=csl`). 토론(`discussion.py`),
+  knowledge state 갱신과 피어 발화 준비(`knowledge.py`, `_state_updates.py`, `_peer_speech.py`)가 구현되어
+  있습니다. 설정 대화와 교실 생성 호출은 `baseline`의 코드를 씁니다(4절). 모델은 두 종류 모두
   `anthropic/claude-haiku-5.5`입니다.
 - 제품 UI: 시작 화면(`/`)과 교실 화면(`/chat`)이 백엔드에 연결되어 실제 세션으로 동작합니다. 세션은 서버
-  기본 파이프라인(지금은 `baseline`)으로 만들어집니다. `/dev`는 모든 상태를 그대로 보여 주는 확인용 페이지입니다.
+  기본 파이프라인(`csl`)으로 만들어집니다. 화면 문구는 영어와 한국어를 지원합니다(Navbar의 언어 버튼).
+  `/dev`는 모든 상태를 그대로 보여 주는 확인용 페이지입니다.
 - 로그인: 닉네임만 입력합니다(비밀번호 없음). 로그인한 사용자가 만든 세션은 그 사용자의 것으로 기록되어,
   중간에 나가도 어느 브라우저에서든 같은 닉네임으로 다시 찾아 이어갈 수 있습니다. 제품 시작 화면(`/`)은 로그인이
   필수이고 `/dev`는 선택입니다.
@@ -46,10 +47,11 @@ pnpm install
 pnpm dev
 ```
 
+- 저장소 루트의 `./dev.sh`는 두 서버를 한 번에 띄웁니다(Bash 4.3 이상, 의존성 설치는 위 명령으로 먼저).
 - 로컬 프론트엔드는 **로컬 백엔드**에 붙여야 합니다. 실서버 백엔드는 `https://csl.kimhm.in` 에서 온 요청만 받습니다.
 - 실제 모델로 돌리려면 `backend/.env.example`을 `backend/.env`로 복사하고 `PIPELINE`, `OPENROUTER_API_KEY`,
   `OPENROUTER_MODEL`을 채웁니다. `.env`는 커밋되지 않습니다. 키와 토큰을 추적되는 파일에 넣지 마세요.
-- `main`에 push하면 서버에서 `uv run pytest`(백엔드 48개)와 `pnpm build`(타입 검사 포함)를 먼저 돌립니다.
+- `main`에 push하면 서버에서 `uv run pytest`(백엔드 153개)와 `pnpm build`(타입 검사 포함)를 먼저 돌립니다.
   하나라도 실패하면 배포되지 않고 실서버는 그대로입니다. push 전에 로컬에서 두 명령을 돌려 보세요.
 - push가 곧 배포이므로, 브랜치에서 작업하고 통과한 뒤 `main`에 합치는 것을 권장합니다.
 - 배포는 코드만 바꿉니다. 서버의 `backend/.env`(기본 `PIPELINE`, 키, access code)는 Hyunmin이 직접 바꿉니다.
@@ -67,15 +69,25 @@ pnpm dev
 ### 4. Alex: 설정 대화와 knowledge state
 
 **어디서.** [csl/knowledge.py](backend/app/pipeline/csl/knowledge.py)의 `init_turn`, `build_classroom`,
-`update_states`. 지금은 세 함수 모두 baseline을 그대로 호출합니다. 참고 구현은
-[baseline.py](backend/app/pipeline/baseline.py)의 `CLASSROOM_SYSTEM`, `STATE_SYSTEM`, `INIT_SYSTEM`, `INIT_STAGES`
-프롬프트와 같은 이름의 메서드입니다.
+`prepare_peer_context`, 그리고 [csl/_state_updates.py](backend/app/pipeline/csl/_state_updates.py)의
+`update_states`, [csl/_peer_speech.py](backend/app/pipeline/csl/_peer_speech.py). 설정 대화와 교실 생성은
+[baseline.py](backend/app/pipeline/baseline.py)의 `init_turn`, `build_classroom`을 호출합니다(`INIT_SYSTEM`,
+`INIT_STAGES`, `CLASSROOM_SYSTEM` 프롬프트).
 
-**가장 급한 문제** (Seongho의 11-19 보고: Studio4 문서의 "Discussion module update" 탭). `update_states` 호출의
-70–90%가 `max_tokens=700`에 걸려 JSON이 잘리고, 그래서 세션에 따라 5–15턴 이후로 피어의 상태가 더 바뀌지
-않습니다. 피어가 튜터가 이미 설명한 것을 계속 모른다고 말하는 원인입니다. 보고서의 제안은 두 가지입니다.
-(1) 바뀐 부분만 출력하게 하거나 `max_tokens`를 올린다. (2) 요청을 `csl/prompting.py`의 `build_messages`로
-조립해 프롬프트 캐시를 쓴다(상태 갱신이 세션 비용의 약 90%).
+**지금 동작** (11-22).
+- 교실 생성: baseline의 호출에 csl의 규칙(`CLASSROOM_PEER_RULES`)을 덧붙입니다. 피어마다 belief, 카드 설명,
+  설명이 서로 맞는 하나의 mental model을 갖고, 설명은 그 피어의 말투로 씁니다.
+- 상태 갱신: 메시지마다 피어별로 한 번, 모델이 `{"changed": false}` 또는 근거 인용이 붙은 **수정분**(belief
+  추가 / 수정 / 삭제, 설명, 질문)을 냅니다. 코드가 인용이 실제 대화에 있는지, 그 피어의 새 결론에 독립된
+  근거가 있는지 확인하고, 맞지 않으면 버립니다(`state.proposal_rejected` 이벤트에 사유). 받아들인 변경은
+  바뀐 항목만 따로 호출해 정확도를 매깁니다. 요청은 `prompting.build_messages`로 조립되어 프롬프트 캐시를 씁니다.
+- 피어 발화 준비: 피어가 말하기 전에 `prepare_peer_context`가 지금 무엇이 쟁점인지를 빠른 모델로 한두 문장
+  뽑고(최대 8초, 실패하면 생략), 그 피어의 현재 상태와 함께 발화 요청의 꼬리에 넣습니다. `_peer_speech.py`는
+  기록에 없는 경험담("예전에 배웠는데…")을 문장 단위로 걸러냅니다(`peer.history_suppressed` 이벤트).
+- 11-22 실서버 로그(스크립트로 돌린 csl 세션 12개): 세션당 약 $0.007, 메시지 14–16개 동안 상태 변화 2–6번,
+  오류 0건.
+- 이전에 보고된 문제(상태 JSON이 `max_tokens=700`에서 잘려 5–15턴 뒤 상태가 멈춤, Seongho의 11-19 보고)는
+  전체 상태를 출력하는 baseline의 `update_states`에만 남아 있습니다.
 
 **무엇을 반환하나.**
 - `init_turn(session, out)` → 가이드의 다음 말을 `out.write()`로 쓰고 `InitResult(done)`을 반환합니다. 처음에는
@@ -88,7 +100,8 @@ pnpm dev
 - `build_classroom(session)` → `Classroom(participants, states, focus)`. 튜터 1명과 피어들, 피어 id별 초기
   `KnowledgeState`. 입력은 `session.topic`과 설정 대화 `session.init_transcript`입니다.
 - `update_states(session, message)` → `list[StateUpdate]`. 토론에 들어간 메시지(에이전트, 학습자 모두)마다
-  정확히 한 번 호출됩니다. 상태가 바뀐 피어만, **전체 새 상태**로 반환합니다(patch가 아님).
+  정확히 한 번 호출됩니다. 상태가 바뀐 피어만, **전체 새 상태**로 반환합니다(patch가 아님). csl은 모델에게서
+  수정분을 받아 코드에서 전체 상태로 만든 뒤 반환합니다.
 
 **`KnowledgeState`는 학습자가 패널에서 보는 형태입니다.** `beliefs[{id, text, accuracy?}]`, `explanation`,
 `explanation_accuracy`, `open_questions`. 내부 표현(belief graph 등)은 자유이며 `session.scratch`에 둡니다.
@@ -99,11 +112,12 @@ pnpm dev
 - 튜터용 정답 같은 숨은 정보는 `session.scratch`에 둡니다(baseline은 `scratch["baseline"]["tutor"]`).
   `scratch`는 JSON으로 저장되어 서버 재시작 후에도 남습니다. 세션별 상태를 `self`에 두면 사라집니다.
 - 토론 쪽이 읽는 키는 `scratch["baseline"]["tutor"]`(`reference`, `key_points`)와
-  `scratch["baseline"]["last_invite"]`입니다. 이 키를 옮기면 `discussion.py`의 `tutor_notes` / `last_invite`도
-  같은 변경에서 고쳐야 합니다(`knowledge.py` 맨 위 주석).
+  `scratch["baseline"]["last_invite"]`입니다(앞의 것은 baseline의 `build_classroom`이, 뒤의 것은
+  `_state_updates.py`의 `update_states`가 씁니다). 이 키를 옮기면 `discussion.py`의 `tutor_notes` /
+  `last_invite`도 같은 변경에서 고쳐야 합니다.
 - `update_states`가 실패하면 로그만 남고 토론은 계속됩니다(상태는 그대로). 실패를 놓치지 않으려면 `/admin`의
   이벤트 로그에서 `server.error`를 확인하세요.
-- 다음 발화는 `update_states`가 끝나야 시작됩니다. baseline은 피어별 호출을 병렬로, `fast=True` 모델로 돌립니다.
+- 다음 발화는 `update_states`가 끝나야 시작됩니다. 피어별 호출은 병렬로, `fast=True` 모델로 돕니다.
 - `accuracy`(`correct` / `partial` / `incorrect`)는 선택 항목입니다. UI가 틀린 belief를 강조하는 데 쓸 수 있습니다.
 
 ### 5. Seongho: 토론 진행
@@ -141,16 +155,19 @@ pnpm dev
 ```
 backend/app/pipeline/csl/
   __init__.py      class CslPipeline: 다섯 메서드, 각각 아래 모듈을 호출
-  knowledge.py     Alex: init_turn, build_classroom, update_states (지금은 baseline 호출)
+  knowledge.py     Alex: init_turn, build_classroom (baseline 호출 + csl 규칙), prepare_peer_context
+  _state_updates.py  Alex: update_states (근거가 붙은 수정분 제안 → 검증 → 정확도 채점)
+  _peer_speech.py  Alex: 피어 발화에서 기록에 없는 경험담 문장 걸러내기
   discussion.py    Seongho: select_speaker, speak
   prompting.py     공용: 프롬프트 캐시에 맞춘 요청 조립 (build_messages)
 ```
 
-`baseline.py`는 서버 기본값이고 `knowledge.py`가 아직 호출하므로 지우거나 이름을 바꾸지 마세요.
+`knowledge.py`가 설정 대화와 교실 생성에 `baseline.py`의 코드를 호출하므로 지우거나 이름을 바꾸지 마세요.
 
-**둘 사이의 계약.** (1) `speak`가 프롬프트에 넣는 `KnowledgeState`의 모양, (2) `session.scratch`의 키(각자
-다른 키를 쓰기), (3) `select_speaker`가 필요로 하는 기록을 `update_states`에 넣는 방법. 현재 합의된 키는
-`knowledge.py` 맨 위 주석에 적혀 있습니다.
+**둘 사이의 계약.** (1) `speak`가 프롬프트에 넣는 피어의 상태: `knowledge.prepare_peer_context`가 만든
+텍스트를 `discussion.speak`가 요청의 꼬리에 넣습니다. (2) `session.scratch`의 키: 지금은
+`scratch["baseline"]["tutor"]`와 `scratch["baseline"]["last_invite"]`(4절). (3) `select_speaker`가 필요로 하는
+기록은 `update_states`에서 남깁니다.
 
 **LLM 호출.** `app.llm`의 `get_llm()`을 씁니다: `stream`, `complete`, `complete_json`. 작은 호출에는 `fast=True`.
 모델 id는 관리자 페이지에서 실행 중에 바뀔 수 있으므로 직접 저장해 두지 마세요. 호출마다 모델, 지연, 토큰,
@@ -180,8 +197,8 @@ uv run pytest
 
 **실서버에서 돌려보기 (Hyunmin을 거치지 않음).** `csl`은 `backend/app/pipeline/__init__.py`의
 `SESSION_PIPELINES`에 이미 등록되어 있습니다. `main`에 push하면 배포되고, `https://csl.kimhm.in/dev`의
-"Agents"에서 `csl`을 골라 세션을 시작하면 됩니다. **그 세션만** `csl`로 돌고, 다른 사람의 세션과 서버 기본값
-(`baseline`)은 그대로입니다. LLM을 쓰므로 access code가 필요합니다.
+"Agents"에서 이름을 골라 세션을 시작하면 됩니다. **그 세션만** 고른 파이프라인으로 돌고, 다른 사람의 세션과
+서버 기본값은 그대로입니다. LLM을 쓰므로 access code가 필요합니다.
 
 ```python
 SESSION_PIPELINES: dict[str, str] = {
@@ -194,8 +211,8 @@ SESSION_PIPELINES: dict[str, str] = {
 다른 버전을 나란히 시험하려면 여기에 한 줄을 더 추가합니다. 등록한 모듈이 import되지 않으면 `uv run pytest`가
 실패해서 배포되지 않습니다.
 
-**기본값으로 만들기.** `csl`을 서버 기본값으로 쓸 때가 되면 Hyunmin에게 `PIPELINE=csl`로 바꿔 달라고 요청합니다.
-그 전까지 이름 없이 만든 세션은 `baseline`으로 돕니다.
+**서버 기본값.** 11-22부터 `PIPELINE=csl`입니다. 이름 없이 만든 세션(제품 화면 포함)은 `csl`로 돌고,
+`baseline`은 이름을 지정하면 그대로 쓸 수 있습니다. 기본값을 바꾸려면 Hyunmin에게 요청합니다.
 
 **인터페이스가 부족하면.** `base.py`나 `protocol.py`를 바꿔야 하는 경우(예: 패널에 보여줄 새 필드) Hyunmin에게
 알려 주세요. `protocol.py`를 바꾸면 `uv run python scripts/gen_ts.py`로 프론트엔드 타입을 다시 만들어야 합니다.
@@ -204,17 +221,24 @@ SESSION_PIPELINES: dict[str, str] = {
 
 **어디서.** `frontend/src/app/page.tsx`(시작 화면), `src/app/chat/`(교실 화면), `src/common`, `src/styles`.
 
-**지금 연결된 상태** (11-21, 디자인은 그대로 두고 데이터만 실제 세션으로 바꿨습니다).
-- `page.tsx`: 주제를 입력하면 세션을 만들고(`createSession`) 주소가 `/?session=<id>`가 됩니다. 세 단계는 서버의
-  `snapshot.phase`를 따라갑니다: Initial question = `init`(가이드와의 설정 대화, Composer는 `actions.replyInit`),
-  Learning direction = `building`, Classroom setup = `ready`(`ClassroomOverview`에 실제 참가자 전달). `init`에서
-  Next는 설정 대화의 나머지를 건너뜁니다(`actions.finishInit`). "Start learning session"은 `/chat?session=<id>`로
-  이동합니다. 서버에 access code가 걸려 있으면 주제 아래에 입력 칸이 나오고, 한 번 통과한 값은 브라우저가 기억합니다.
-- `chat/ChatSession.tsx`: 주소의 `?session=<id>`로 세션을 엽니다. 들어오면 토론이 시작되고(`ready`일 때
-  `actions.startDiscussion`), 메시지는 `snapshot.messages`의 discussion 채널, 입력 중 표시는 `snapshot.activeTurn`,
-  Pause/Resume는 `actions.pause` / `actions.resume`, Composer는 `actions.say`, 오른쪽 패널은 선택한 참가자의
-  최신 `snapshot.states[id]`입니다. 참가자를 누르면 `actions.track("panel.open")`으로 기록됩니다. 아직 설정 중인
-  세션으로 들어오면 `/?session=<id>`로 돌려보냅니다.
+**지금 연결된 상태** (11-22, 디자인은 그대로 두고 데이터만 실제 세션으로 바꿨습니다).
+- `page.tsx`: 주제를 입력하면 세션을 만들고(`createSession`, 언어는 화면 언어) 주소가 `/?session=<id>`가 됩니다.
+  세 단계는 서버의 `snapshot.phase`를 따라갑니다: Initial question = `init`(가이드와의 설정 대화, Composer는
+  `actions.replyInit`), Learning direction = `building`, Classroom setup = `ready`(`ClassroomOverview`에 실제
+  참가자 전달). `init`에서 Next는 설정 대화의 나머지를 건너뜁니다(`actions.finishInit`). "Start learning
+  session"은 토론을 시작시키고(`actions.startDiscussion(language)`), phase가 `discussion`이 되면
+  `/chat?session=<id>`로 넘어갑니다. 서버에 access code가 걸려 있으면 주제 아래에 입력 칸이 나오고, 한 번
+  통과한 값은 브라우저가 기억합니다.
+- `chat/ChatSession.tsx`: 주소의 `?session=<id>`로 세션을 엽니다. 메시지는 `snapshot.messages`의 discussion
+  채널, 입력 중 표시는 `snapshot.activeTurn`, Pause/Resume는 `actions.pause` / `actions.resume`, Composer는
+  `actions.say`, 오른쪽 패널은 선택한 참가자의 최신 `snapshot.states[id]`입니다(닫기 버튼으로 접을 수 있음).
+  참가자를 누르면 `actions.track("panel.open")`으로 기록됩니다. 아직 토론이 시작되지 않은 세션(`init`,
+  `building`, `ready`)으로 들어오면 `/?session=<id>`로 돌려보냅니다.
+- 언어: 화면 문구는 `src/i18n/en.json`, `ko.json`에 있고 `useI18n().t("key")`로 씁니다(두 파일의 키가 같아야
+  빌드됩니다). 고른 언어는 쿠키 `NEXT_LOCALE`에 남고 Navbar의 언어 버튼으로 바꿉니다. 세션은 만들 때의 화면
+  언어로 만들어져 설정 대화와 교실(피어 카드, 초기 상태, 학습 목표)이 그 언어로 나옵니다. 교실 단계의
+  "Discussion language"는 토론 언어만 바꾸므로, 여기서 다른 언어를 고르면 이미 만들어진 교실과 상태는 원래
+  언어로 남습니다.
 - `ClassroomOverview`는 `participants` prop을 받습니다(없으면 기존 예시 데이터).
 - `/?pipeline=mock`으로 열면 그 세션은 비용 없는 mock으로 만들어집니다(UI 확인용, access code 불필요).
   `/?pipeline=csl`도 같은 방식입니다.
@@ -231,9 +255,8 @@ SESSION_PIPELINES: dict[str, str] = {
   이동), 이번에 바뀐 내용(`changes`의 전/후), 접혀 있는 "Earlier understanding"(이전 버전 전체)이 있습니다.
 - 두 설정은 브라우저의 localStorage(`csl.classroomPrefs`)에 남습니다.
 
-**아직 UI에 없는 것.** 토론 언어 선택(지금은 영어 고정, Navbar의 Language 버튼은 연결 안 됨), Peer들의 상태를
-나란히 비교하는 화면(10번), Open question 접기와 질문 로그(11번), 패널 접기와 위치(12번), 음성 입력(14번).
-아래 표의 값들로 만들 수 있습니다.
+**아직 UI에 없는 것.** Peer들의 상태를 나란히 비교하는 화면(10번), Open question 접기와 질문 로그(11번),
+패널 위치 옮기기(12번, 닫기는 있음), 음성 입력(14번). 아래 표의 값들로 만들 수 있습니다.
 
 **백엔드 연결은 이미 있습니다.** 두 개만 쓰면 됩니다.
 
@@ -249,8 +272,8 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 - **UI 작업에는 mock 세션을 쓰세요.** `createSession({ topic, pipeline: "mock" })`. LLM 호출과 비용이 없고
   access code도 필요 없습니다. 고정 시나리오("Why is summer hotter than winter?", 15턴, 영어/한국어)를
   재생하며 주제는 무시합니다. 15번째 턴에서 튜터가 학습자에게 설명을 요청합니다.
-- 실제 에이전트는 `pipeline: "csl"`로 만듭니다(`pipeline`을 빼면 서버 기본값인 `baseline`). 실서버에서는
-  access code 입력이 필요합니다. 고를 수 있는 이름 목록은 `fetchHealth()`가 돌려줍니다.
+- 실제 에이전트는 `pipeline`을 빼면 됩니다(서버 기본값인 `csl`). 실서버에서는 access code 입력이 필요합니다.
+  고를 수 있는 이름 목록은 `fetchHealth()`가 돌려줍니다.
 
 **알아둘 것.**
 - `src/lib/csl/protocol.ts`는 생성되는 파일입니다. 손으로 고치지 마세요. 타입이 부족하면 Hyunmin에게 알려 주세요.
@@ -261,12 +284,15 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   - `Navbar`의 프로필 버튼이 `/mypage`로 가고, 로그인하면 닉네임이 옆에 보입니다.
   - `src/common/components/LoginCard.tsx`: 로그인 폼. `/`는 로그인 전에는 이 폼을 보여 줍니다(`page.tsx` 맨 위의
     `if (!user)` 분기).
-  - `src/app/mypage/page.tsx`: 내 세션 목록. "Continue"는 `/chat?session=<id>&topic=<주제>`로 이동합니다.
+  - `src/app/mypage/page.tsx`: 내 세션 목록. "Continue"는 토론 중이거나 끝난 세션이면 `/chat?session=<id>`,
+    아직 설정 중이면 `/?session=<id>`로 이동합니다.
 - **이어가기.** 두 화면 모두 주소의 `?session=<id>`(`useCurrentSessionId()`)로 세션을 열기 때문에 새로고침,
   뒤로 가기, 링크 공유, 마이페이지의 Continue가 모두 같은 세션으로 돌아옵니다. 화면을 떠나면 토론은 서버에서
   일시정지되고, 다시 들어오면 이어집니다.
 - 서버가 볼 수 없는 UI 동작은 `actions.track(name, data)`로 기록하세요(예: 패널 열기). Milestone 5의 사용 분석에 씁니다.
-- UI 문구는 영어가 기본입니다. 토론 언어는 세션을 만들 때 `language: "en" | "ko"`로 고릅니다.
+- UI 문구는 영어가 기본이고 한국어로 바꿀 수 있습니다. 새 문구는 `src/i18n/en.json`과 `ko.json`에 같은 키로
+  넣습니다. 세션 언어는 만들 때 `language: "en" | "ko"`로 정하고, `actions.startDiscussion(language)`로 토론
+  시작 시 바꿀 수 있습니다.
 - Next.js 16입니다. 코드를 쓰기 전에 [frontend/AGENTS.md](frontend/AGENTS.md)를 보세요.
 - 확인: `pnpm exec next typegen && pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm build`.
   `src/styles/styled.d.ts`, `themes.d.ts`의 eslint 오류 2개는 기존 것입니다.
@@ -292,11 +318,13 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 
 ### 9. 남은 일
 
-- Alex: `knowledge.py`의 실제 구현(설정 대화, 교실 구성, 상태 갱신). 상태 갱신이 중간에 멈추는 문제가 가장 급합니다(4절).
+- Alex: 상태 갱신과 피어 발화 준비는 들어갔습니다(4절). 설정 대화(`init_turn`)와 교실 생성 호출은 baseline의
+  코드를 씁니다.
 - Seongho: 토론 다듬기. 브랜치 `seongho/cache-friendly-discussion`에 `main`에 없는 커밋이 하나 있습니다(`78a1244`).
-- Jeeyun: 제품 UI 다듬기. 연결은 되어 있고, 아직 UI에 없는 것은 7절에 적혀 있습니다.
-- Hyunmin: 서버 기본값을 `csl`로 전환, 서버 재부팅 확인, 동시 사용자 확인, 보고서(URL, access code,
-  라이브러리와 도구 목록, 스크린샷, System Architecture 탭)
+- Jeeyun: 제품 UI 다듬기. 교실 단계의 "Discussion language"는 교실을 다시 만들지 않습니다(7절). 아직 UI에 없는
+  것도 7절에 적혀 있습니다.
+- Hyunmin: 서버 재부팅 확인, 동시 사용자 확인, 보고서(URL, access code, 라이브러리와 도구 목록, 스크린샷,
+  System Architecture 탭)
 - 팀: 토론에서 학습자를 어떻게 부를지 정하기(지금 화면에는 "나", 프롬프트에는 "Learner")
 
 ---
@@ -307,13 +335,13 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 
 - Live server: **https://csl.kimhm.in** . A push to `main` is tested, built and deployed automatically.
 - The serving layer (sessions, reading pace, interruption, WebSocket, storage, event log) is finished and running.
-- Agents: the team's pipeline **`csl`** is on the live server (pick `csl` under "Agents" on `/dev`). The
-  discussion side (`discussion.py`) is implemented; the setup chat and knowledge-state side (`knowledge.py`) still
-  calls the placeholder `baseline`. The server's default is still `PIPELINE=baseline`, with
-  `anthropic/claude-haiku-5.5` as both models.
+- Agents: the team's pipeline **`csl`** is **the server's default since 11-22** (`PIPELINE=csl`). The discussion
+  (`discussion.py`), the knowledge-state updates and the preparation of a peer's reply (`knowledge.py`,
+  `_state_updates.py`, `_peer_speech.py`) are implemented. The setup chat and the classroom call use the code of
+  `baseline` (section 4). Both models are `anthropic/claude-haiku-5.5`.
 - Product UI: the start page (`/`) and the classroom page (`/chat`) are connected to the backend and run real
-  sessions, created on the server's default pipeline (`baseline` at the moment). `/dev` remains the bare page that
-  shows every piece of state.
+  sessions, created on the server's default pipeline (`csl`). The interface text is available in English and
+  Korean (the language button in the Navbar). `/dev` remains the bare page that shows every piece of state.
 - Login: a nickname and nothing else (no password). Sessions created while signed in are recorded as that
   user's, so a learner who leaves midway finds the session again with the same nickname, from any browser. The
   product start page (`/`) requires it; `/dev` makes it optional.
@@ -342,10 +370,12 @@ pnpm install
 pnpm dev
 ```
 
+- `./dev.sh` in the repository root starts both servers at once (Bash 4.3 or newer; install the dependencies
+  with the commands above first).
 - A local frontend has to talk to a **local backend**. The live backend only accepts requests from `https://csl.kimhm.in`.
 - For real models, copy `backend/.env.example` to `backend/.env` and fill in `PIPELINE`, `OPENROUTER_API_KEY` and
   `OPENROUTER_MODEL`. `.env` is not committed. Never put keys or tokens in a tracked file.
-- On a push to `main` the server first runs `uv run pytest` (48 backend tests) and `pnpm build` (includes the type
+- On a push to `main` the server first runs `uv run pytest` (153 backend tests) and `pnpm build` (includes the type
   check). If either fails, nothing is deployed and the live site stays as it was. Run both locally before pushing.
 - A push is a deploy, so working on a branch and merging into `main` once both pass is recommended.
 - A deploy only changes code. The server's `backend/.env` (default `PIPELINE`, keys, access code) is changed by
@@ -362,17 +392,31 @@ pnpm dev
 
 ### 4. Alex: the setup chat and knowledge states
 
-**Where.** `init_turn`, `build_classroom` and `update_states` in
-[csl/knowledge.py](backend/app/pipeline/csl/knowledge.py). Right now all three call the baseline unchanged. The
-reference is in [baseline.py](backend/app/pipeline/baseline.py): the `CLASSROOM_SYSTEM`, `STATE_SYSTEM`,
-`INIT_SYSTEM` and `INIT_STAGES` prompts and the methods of the same names.
+**Where.** `init_turn`, `build_classroom` and `prepare_peer_context` in
+[csl/knowledge.py](backend/app/pipeline/csl/knowledge.py), `update_states` in
+[csl/_state_updates.py](backend/app/pipeline/csl/_state_updates.py), and
+[csl/_peer_speech.py](backend/app/pipeline/csl/_peer_speech.py). The setup chat and the classroom call
+`init_turn` and `build_classroom` of [baseline.py](backend/app/pipeline/baseline.py) (the `INIT_SYSTEM`,
+`INIT_STAGES` and `CLASSROOM_SYSTEM` prompts).
 
-**Most urgent problem** (Seongho's report of 11-19: the "Discussion module update" tab of the Studio4 document).
-70–90% of `update_states` calls hit `max_tokens=700` and the JSON is cut off, so the peers' states stop changing
-after turn 5–15, depending on the session. That is why peers keep saying they do not understand something the tutor
-already explained. The report suggests two things: (1) output only what changed, or raise `max_tokens`; (2) build
-the request with `build_messages` from `csl/prompting.py` so it uses the prompt cache (the state update is about
-90% of a session's cost).
+**How it works now** (11-22).
+- Classroom: the baseline's call with csl's rules added (`CLASSROOM_PEER_RULES`). Each peer holds one mental
+  model in which the beliefs, the card description and the explanation agree, and the explanation is written in
+  that peer's voice.
+- State update: once per peer for every message, the model returns `{"changed": false}` or **edits** with quoted
+  evidence (beliefs added / revised / removed, the explanation, questions). The code checks that the quote is in
+  the discussion and that a peer's new conclusion has an independent premise, and drops the proposal otherwise
+  (the reason is in the `state.proposal_rejected` event). An accepted change gets its accuracy labels from a
+  separate call that grades only what changed. The requests are built with `prompting.build_messages`, so they
+  use the prompt cache.
+- Preparing a peer's reply: before a peer speaks, `prepare_peer_context` has the fast model state in one or two
+  sentences what is at issue (8 seconds at most, skipped on failure) and puts it, with that peer's current state,
+  in the tail of the request. `_peer_speech.py` drops sentences that claim an experience nobody stated ("I was
+  taught that…"; `peer.history_suppressed` event).
+- From the live log of 11-22 (12 scripted csl sessions): about $0.007 per session, 2–6 state changes over 14–16
+  messages, no errors.
+- The problem reported earlier (the state JSON cut off at `max_tokens=700`, so states stopped changing after turn
+  5–15; Seongho's report of 11-19) remains only in the baseline's `update_states`, which outputs the full state.
 
 **What to return.**
 - `init_turn(session, out)` → write the guide's next message with `out.write()` and return `InitResult(done)`.
@@ -386,7 +430,8 @@ the request with `build_messages` from `csl/prompting.py` so it uses the prompt 
 - `build_classroom(session)` → `Classroom(participants, states, focus)`: one tutor, the peers, and an initial
   `KnowledgeState` per peer id. The inputs are `session.topic` and the setup chat, `session.init_transcript`.
 - `update_states(session, message)` → `list[StateUpdate]`. Called exactly once for every message that entered the
-  discussion (agent or learner). Return only the peers whose state changed, each as the **complete new state** (not a patch).
+  discussion (agent or learner). Return only the peers whose state changed, each as the **complete new state** (not
+  a patch). csl gets edits from the model and builds the complete state in code before returning it.
 
 **`KnowledgeState` is what the learner sees in the panel:** `beliefs[{id, text, accuracy?}]`, `explanation`,
 `explanation_accuracy`, `open_questions`. Your internal representation (a belief graph, for example) is up to you
@@ -400,12 +445,13 @@ and lives in `session.scratch`.
   `scratch["baseline"]["tutor"]`). `scratch` is stored as JSON and survives a server restart. Per-session state kept
   on `self` is lost.
 - The discussion side reads `scratch["baseline"]["tutor"]` (`reference`, `key_points`) and
-  `scratch["baseline"]["last_invite"]`. If these keys move, change `tutor_notes` / `last_invite` in `discussion.py`
-  in the same change (see the comment at the top of `knowledge.py`).
+  `scratch["baseline"]["last_invite"]` (the first is written by the baseline's `build_classroom`, the second by
+  `update_states` in `_state_updates.py`). If these keys move, change `tutor_notes` / `last_invite` in
+  `discussion.py` in the same change.
 - If `update_states` fails, the error is only logged and the discussion goes on with the states unchanged. To catch
   failures, look for `server.error` in the event log on `/admin`.
-- The next utterance starts only after `update_states` has finished. The baseline runs one call per peer in parallel
-  on the `fast=True` model.
+- The next utterance starts only after `update_states` has finished. The calls run one per peer in parallel on the
+  `fast=True` model.
 - `accuracy` (`correct` / `partial` / `incorrect`) is optional. The UI can use it to highlight wrong beliefs.
 
 ### 5. Seongho: discussion dynamics
@@ -446,16 +492,19 @@ The code is in `backend/app/pipeline/csl/` and is registered under the name `csl
 ```
 backend/app/pipeline/csl/
   __init__.py      class CslPipeline: the five methods, each calling into the modules below
-  knowledge.py     Alex: init_turn, build_classroom, update_states (currently calls the baseline)
+  knowledge.py     Alex: init_turn, build_classroom (the baseline's call + csl's rules), prepare_peer_context
+  _state_updates.py  Alex: update_states (edits with evidence proposed → checked → accuracy graded)
+  _peer_speech.py  Alex: drops sentences in a peer's reply that claim an experience nobody stated
   discussion.py    Seongho: select_speaker, speak
   prompting.py     shared: request assembly laid out for the prompt cache (build_messages)
 ```
 
-`baseline.py` is the server's default and `knowledge.py` still calls it, so do not delete or rename it.
+`knowledge.py` calls the code of `baseline.py` for the setup chat and the classroom, so do not delete or rename it.
 
-**The contract between you.** (1) the shape of the `KnowledgeState` that `speak` puts into prompts, (2) the keys in
-`session.scratch` (use a different key each), (3) how the bookkeeping `select_speaker` needs gets into `update_states`.
-The keys agreed so far are in the comment at the top of `knowledge.py`.
+**The contract between you.** (1) the peer's state that `speak` puts into prompts: the text built by
+`knowledge.prepare_peer_context`, which `discussion.speak` places in the tail of the request; (2) the keys in
+`session.scratch`: `scratch["baseline"]["tutor"]` and `scratch["baseline"]["last_invite"]` at the moment
+(section 4); (3) the bookkeeping `select_speaker` needs is written in `update_states`.
 
 **LLM calls.** Use `get_llm()` from `app.llm`: `stream`, `complete`, `complete_json`; `fast=True` for small calls.
 The model ids can change at runtime from the admin page, so do not store them yourself. Every call is logged with
@@ -484,9 +533,9 @@ uv run pytest
   log and the cost.
 
 **Trying it on the live server (without Hyunmin).** `csl` is already registered in `SESSION_PIPELINES` in
-`backend/app/pipeline/__init__.py`. Push to `main`, wait for the deploy, then pick `csl` under "Agents" on
-`https://csl.kimhm.in/dev` and start a session. **Only that session** runs on `csl`; other people's sessions and
-the server's default (`baseline`) are untouched. It calls an LLM, so it needs the access code.
+`backend/app/pipeline/__init__.py`. Push to `main`, wait for the deploy, then pick a name under "Agents" on
+`https://csl.kimhm.in/dev` and start a session. **Only that session** runs on the pipeline you picked; other
+people's sessions and the server's default are untouched. It calls an LLM, so it needs the access code.
 
 ```python
 SESSION_PIPELINES: dict[str, str] = {
@@ -499,8 +548,8 @@ SESSION_PIPELINES: dict[str, str] = {
 To try another version side by side, add one more line here. If a registered module cannot be imported,
 `uv run pytest` fails and nothing is deployed.
 
-**Making it the default.** When it is time for `csl` to be the server's default, ask Hyunmin to set
-`PIPELINE=csl`. Until then sessions created without a name run on `baseline`.
+**The server's default.** `PIPELINE=csl` since 11-22. Sessions created without a name (the product pages
+included) run on `csl`; `baseline` still works when asked for by name. Ask Hyunmin to change the default.
 
 **If the interface is not enough.** If `base.py` or `protocol.py` has to change (a new field for the panel, for
 example), tell Hyunmin. After a change to `protocol.py` the frontend types are regenerated with
@@ -510,19 +559,27 @@ example), tell Hyunmin. After a change to `protocol.py` the frontend types are r
 
 **Where.** `frontend/src/app/page.tsx` (start page), `src/app/chat/` (classroom page), `src/common`, `src/styles`.
 
-**What is connected now** (11-21; the design is unchanged, only the data became a real session).
-- `page.tsx`: entering a topic creates a session (`createSession`) and the address becomes `/?session=<id>`. The
-  three steps follow the server's `snapshot.phase`: Initial question = `init` (the setup chat with the guide; the
-  Composer sends `actions.replyInit`), Learning direction = `building`, Classroom setup = `ready` (the real
-  participants go into `ClassroomOverview`). In `init`, Next skips the rest of the setup chat
-  (`actions.finishInit`). "Start learning session" goes to `/chat?session=<id>`. If the server has an access code,
-  a field appears under the topic; a code that worked is remembered by the browser.
-- `chat/ChatSession.tsx`: opens the session named by `?session=<id>`. Entering starts the discussion
-  (`actions.startDiscussion` when the phase is `ready`). Messages are the discussion channel of
+**What is connected now** (11-22; the design is unchanged, only the data became a real session).
+- `page.tsx`: entering a topic creates a session (`createSession`, in the language of the interface) and the
+  address becomes `/?session=<id>`. The three steps follow the server's `snapshot.phase`: Initial question =
+  `init` (the setup chat with the guide; the Composer sends `actions.replyInit`), Learning direction =
+  `building`, Classroom setup = `ready` (the real participants go into `ClassroomOverview`). In `init`, Next
+  skips the rest of the setup chat (`actions.finishInit`). "Start learning session" starts the discussion
+  (`actions.startDiscussion(language)`), and the page moves to `/chat?session=<id>` once the phase is
+  `discussion`. If the server has an access code, a field appears under the topic; a code that worked is
+  remembered by the browser.
+- `chat/ChatSession.tsx`: opens the session named by `?session=<id>`. Messages are the discussion channel of
   `snapshot.messages`, the typing bubble is `snapshot.activeTurn`, Pause / Resume are `actions.pause` /
   `actions.resume`, the Composer sends `actions.say`, and the right panel shows the latest
-  `snapshot.states[id]` of the selected participant. Selecting a participant is logged with
-  `actions.track("panel.open")`. A session that is still being set up is sent back to `/?session=<id>`.
+  `snapshot.states[id]` of the selected participant (a close button hides it). Selecting a participant is logged
+  with `actions.track("panel.open")`. A session whose discussion has not started (`init`, `building`, `ready`)
+  is sent back to `/?session=<id>`.
+- Language: the interface text is in `src/i18n/en.json` and `ko.json`, used as `useI18n().t("key")` (the build
+  needs both files to have the same keys). The chosen language is kept in the cookie `NEXT_LOCALE` and changed
+  with the language button in the Navbar. A session is created in the interface language of that moment, so the
+  setup chat and the classroom (peer cards, initial states, learning goal) come out in it. "Discussion language"
+  on the classroom step changes the language of the discussion only: picking another one there leaves the
+  classroom and the states that already exist in the original language.
 - `ClassroomOverview` takes a `participants` prop (without it, the earlier sample data).
 - Opening `/?pipeline=mock` creates that session on the free mock (for checking the UI; no access code).
   `/?pipeline=csl` works the same way.
@@ -541,10 +598,9 @@ example), tell Hyunmin. After a change to `protocol.py` the frontend types are r
   "Earlier understanding" with every earlier version.
 - The two options are kept in the browser's localStorage (`csl.classroomPrefs`).
 
-**Not in the UI yet.** Choosing the discussion language (English for now; the Language button in the Navbar is
-not connected), a side-by-side comparison of the peers' states (item 10), collapsing Open question and a question
-log (item 11), collapsing and moving the panel (item 12), voice input (item 14). The table below says what to
-build them from.
+**Not in the UI yet.** A side-by-side comparison of the peers' states (item 10), collapsing Open question and a
+question log (item 11), moving the panel (item 12; closing it exists), voice input (item 14). The table below
+says what to build them from.
 
 **The backend connection already exists.** Two things are all you need:
 
@@ -561,8 +617,8 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 - **Use mock sessions for UI work:** `createSession({ topic, pipeline: "mock" })`. No LLM calls, no cost, no access
   code. It replays a fixed scenario ("Why is summer hotter than winter?", 15 turns, English or Korean) and ignores
   the topic. In turn 15 the tutor asks the learner to explain.
-- For the real agents use `pipeline: "csl"` (leaving `pipeline` out gives the server's default, `baseline`). On
-  the live server that needs an access-code field. `fetchHealth()` returns the names that can be picked.
+- For the real agents leave `pipeline` out (the server's default, `csl`). On the live server that needs an
+  access-code field. `fetchHealth()` returns the names that can be picked.
 
 **Good to know.**
 - `src/lib/csl/protocol.ts` is generated. Do not edit it by hand; if a type is missing, tell Hyunmin.
@@ -573,13 +629,16 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
   - The profile button of `Navbar` goes to `/mypage` and shows the nickname once signed in.
   - `src/common/components/LoginCard.tsx`: the sign-in form. `/` shows it until someone is signed in (the
     `if (!user)` branch at the top of `page.tsx`).
-  - `src/app/mypage/page.tsx`: the list of my sessions. "Continue" goes to `/chat?session=<id>&topic=<topic>`.
+  - `src/app/mypage/page.tsx`: the list of my sessions. "Continue" goes to `/chat?session=<id>` for a session
+    in discussion or ended, and to `/?session=<id>` for one that is still being set up.
 - **Continuing a session.** Both pages open the session named by `?session=<id>` (`useCurrentSessionId()`), so a
   reload, the back button, a shared link and "Continue" on My page all return to the same session. Leaving a page
   pauses the discussion on the server; coming back resumes it.
 - Log UI actions the server cannot see with `actions.track(name, data)` (opening a panel, for example). Milestone 5
   analyses usage from these.
-- UI text is English by default. The discussion language is chosen per session with `language: "en" | "ko"`.
+- UI text is English by default and can be switched to Korean. New text goes into `src/i18n/en.json` and
+  `ko.json` under the same key. The session language is set at creation with `language: "en" | "ko"` and can be
+  changed when the discussion starts with `actions.startDiscussion(language)`.
 - This is Next.js 16. Read [frontend/AGENTS.md](frontend/AGENTS.md) before writing code.
 - Checks: `pnpm exec next typegen && pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm build`. The two eslint errors in
   `src/styles/styled.d.ts` and `themes.d.ts` were there before.
@@ -605,11 +664,12 @@ const { snapshot, connection, error, actions } = useCslSession(sessionId);
 
 ### 9. What is left
 
-- Alex: the real implementation of `knowledge.py` (setup chat, classroom, state updates). The state update that
-  stops partway is the most urgent item (section 4).
+- Alex: the state updates and the preparation of a peer's reply are in (section 4). The setup chat (`init_turn`)
+  and the classroom call use the baseline's code.
 - Seongho: refining the discussion. The branch `seongho/cache-friendly-discussion` has one commit that is not on
   `main` (`78a1244`).
-- Jeeyun: refine the product UI. It is connected; what is not in the UI yet is listed in section 7.
-- Hyunmin: switch the server's default to `csl`, reboot test, check with several simultaneous users, the report
-  (URL, access code, list of libraries and tools, screenshots, the System Architecture tab)
+- Jeeyun: refine the product UI. "Discussion language" on the classroom step does not rebuild the classroom
+  (section 7); what is not in the UI yet is listed there too.
+- Hyunmin: reboot test, check with several simultaneous users, the report (URL, access code, list of libraries
+  and tools, screenshots, the System Architecture tab)
 - Team: decide how the discussion refers to the learner (the screen shows "나" / "You", the prompt says "Learner")

@@ -40,7 +40,8 @@ signOut();
 
 `createSession()` attaches the signed-in user by itself, so every session started while signed in is theirs
 and shows up in `fetchUserSessions` from any browser. `<LoginCard />` (`src/common/components`) is the
-sign-in form; `/mypage` lists the sessions and links to `/chat?session=<id>`; the start page shows the
+sign-in form; `/mypage` lists the sessions and links to `/chat?session=<id>` (or `/?session=<id>` while a
+session is still being set up); the start page shows the
 form until someone is signed in. `snapshot.userId` says whose a session is (null = nobody's).
 
 **Staying in a session.** The session id is all a page has to remember: the server keeps every session and
@@ -73,13 +74,13 @@ If the id in the URL does not exist, `connection` becomes `closed` and `snapshot
 | `invitedTurnId` | Set while the tutor waits for the learner's explanation |
 | `pace` | `{ auto, speed }` |
 | `focus` | One line: what the session is built around |
-| `pipeline` | Which agents run the session: the server's default (e.g. `baseline`) or the name the session asked for (e.g. `mock`) |
+| `pipeline` | Which agents run the session: the server's default (e.g. `csl`) or the name the session asked for (e.g. `mock`) |
 | `userId` | The signed-in learner who created the session, or null |
 
 | `actions` | Effect |
 | --- | --- |
 | `replyInit(text)`, `finishInit()` | Answer the setup guide / skip the rest of the setup chat |
-| `startDiscussion()` | `ready` → `discussion` |
+| `startDiscussion(language?)` | `ready` → `discussion`. With `"en"` or `"ko"` the discussion runs in that language from here on (`snapshot.language` changes); the classroom and the states built before stay as they were |
 | `say(text)` | Learner message. Allowed at any moment; the agents drop what they were about to say and respond |
 | `pause()`, `resume()` | `resume` also retries after an error and passes on the tutor's invitation |
 | `step()` | Show the next message now |
@@ -126,7 +127,7 @@ Server → client: `{ "type", "seq", "ts", "data" }`
 | `type` | `data` |
 | --- | --- |
 | `session.snapshot` | `SessionSnapshot`, first message after every connect |
-| `phase.changed` | `{ phase, reason }` (`reason` on `ended`: `completed`, `turn_limit`, `user`) |
+| `phase.changed` | `{ phase, language, reason }` (`language`: the session language at that moment; `reason` on `ended`: `completed`, `turn_limit`, `user`) |
 | `status.changed` | `{ status }` |
 | `pace.changed` | `{ pace }` |
 | `classroom.ready` | `{ participants, focus, states }` |
@@ -138,6 +139,6 @@ Server → client: `{ "type", "seq", "ts", "data" }`
 | `user.invited` | `{ turnId }` |
 | `error` | `{ code, message, recoverable }` |
 
-Client → server: `{ "type", "data" }` with `init.reply`, `init.finish`, `discussion.start`,
+Client → server: `{ "type", "data" }` with `init.reply`, `init.finish`, `discussion.start` (`{ language? }`),
 `user.message`, `control.pause`, `control.resume`, `control.step`, `control.set_pace`, `session.end`,
 `ui.event`, `ping`.
