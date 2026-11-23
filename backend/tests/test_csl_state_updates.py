@@ -505,6 +505,31 @@ async def test_unusable_grade_keeps_all_public_content_and_clears_stale_labels(c
     assert "shelf B" not in update.state.model_dump_json()
 
 
+async def test_a_null_label_written_as_text_keeps_the_other_grades(classroom, tracker):
+    """Seen on claude-haiku-5.5: "accuracy": "null" (a string) for a claim the reference cannot settle."""
+    async def text_null(payload):
+        return {"beliefs": [{"id": b["id"], "accuracy": "null"} for b in payload["beliefs"]], "explanation_accuracy": "partial"}
+
+    tracker.grade = text_null
+    tracker.by_student["peer1"] = proposal(
+        belief_edits=[{"op": "revise", "id": LEGACY_ID, "text": REVISED_RULE}], explanation=REVISED_RULE,
+    )
+    [update] = await CslPipeline().update_states(classroom, commit(classroom, EVIDENCE))
+    assert update.state.beliefs[0].text == REVISED_RULE and update.state.beliefs[0].accuracy is None
+    assert update.state.explanation_accuracy == "partial"
+
+
+async def test_an_explanation_only_grade_may_leave_out_the_empty_belief_list(classroom, tracker):
+    async def explanation_only(payload):
+        assert payload["beliefs"] == []
+        return {"explanation_accuracy": "partial"}
+
+    tracker.grade = explanation_only
+    tracker.by_student["peer1"] = proposal(explanation=REVISED_RULE)
+    [update] = await CslPipeline().update_states(classroom, commit(classroom, EVIDENCE))
+    assert update.state.explanation == REVISED_RULE and update.state.explanation_accuracy == "partial"
+
+
 async def test_missing_reference_leaves_new_content_ungraded(classroom, tracker):
     del classroom.scratch["baseline"]["tutor"]["reference"]
     tracker.by_student["peer1"] = proposal(belief_edits=[{"op": "add", "text": EVIDENCE}])

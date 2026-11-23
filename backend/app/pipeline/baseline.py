@@ -65,6 +65,45 @@ _ENDS_WITH_QUESTION = re.compile(r"[?？][^\w?？]*$")
 def ends_with_question(text: str) -> bool:
     return bool(_ENDS_WITH_QUESTION.search(text.strip()))
 
+
+# A stricter setup chat, used by the csl-shorten pipeline (BaselinePipeline(strict_setup=True)). The guide
+# states no fact about the topic, its follow-ups stay with the learner's own words, a guess or "I don't
+# know" is not asked about again, and it decides whether it is done before it writes the message.
+INIT_SYSTEM_STRICT = """You are the setup guide of a learning app. In the app, simulated classmates with incomplete understanding discuss a topic so that the learner notices gaps in their own understanding. You are running a short setup chat before the discussion.
+Write in {lang}. Be brief: 1-3 sentences. Never explain the topic, never say whether the learner is right, never hint at the answer. State no fact about the topic, not even to correct a mistake: the learner's mistakes are what the session is built from.
+
+{stage}"""
+
+INIT_STAGES_STRICT = {
+    "ask": 'The learner entered this topic: "{topic}". If it is broad, narrow it to one concrete why/how question and say which one you picked. Then ask the learner to explain what they currently understand about it in one or two sentences. Tell them a complete or correct answer is not expected.',
+    "probe": 'Topic: "{topic}". Ask exactly one short follow-up question about the vaguest or weakest link in the learner\'s explanation ("what exactly do you mean by ...", "why does that follow?"). Ask about their own words only: do not bring in a concept, term or fact they have not mentioned.',
+    "decide": (
+        'Topic: "{topic}". First decide which of these two messages you write, then write only that one. Never mix them: a message that asks something does not announce the classroom, and a closing message asks nothing. '
+        "(a) Only if you still cannot tell what the learner thinks the mechanism is: ask exactly one more short follow-up question about the vaguest link in their own words, without bringing in a concept, term or fact they have not mentioned. End the message with that question. "
+        'An answer like "I don\'t know" or a guess is a complete answer: do not ask about that point again. '
+        "(b) Otherwise, and whenever in doubt, close the setup chat: " + _CLOSING
+    ),
+    "close": 'Topic: "{topic}". Close the setup chat: ' + _CLOSING,
+}
+
+INIT_VERDICT_STRICT = """
+
+Answer with a single JSON object and nothing else, "done" first: {"done": true|false, "message": "<the message the learner reads>"}
+"done" is your decision, and the message has to match it. true: the message closes the setup chat and asks or requests nothing from the learner. false: it asks them a question or asks them to explain, describe or add anything, in any wording, with or without a question mark, and it says nothing about setting up the classroom."""
+
+# What follows the last question of a message (group 2), when it is more than punctuation.
+_AFTER_LAST_QUESTION = re.compile(r"^(.*[?？][\"'”’)\]]*)\s+(\S.*)$", re.S)
+
+
+def without_closing_remark(text: str) -> str:
+    """A message that waits for an answer ends with its question.
+
+    The guide sometimes asks and then adds "Setting up the classroom now." while saying the chat is not
+    done: the learner reads that the classroom is coming and nothing happens. Drop what follows the question.
+    """
+    match = _AFTER_LAST_QUESTION.match(text.strip())
+    return match.group(1) if match and len(match.group(2)) <= 80 else text
+
 CLASSROOM_SYSTEM = """You design a simulated classroom for one learner. Output a single JSON object and nothing else.
 
 Schema:
@@ -165,8 +204,10 @@ def _render(messages: list[Message], limit: int = 30) -> str:
 class BaselinePipeline:
     name = "baseline"
 
-    def __init__(self) -> None:
+    def __init__(self, *, strict_setup: bool = False) -> None:
         self.settings = get_settings()
+        # True: the setup chat uses the *_STRICT texts above (the csl-shorten pipeline).
+        self.strict_setup = strict_setup
 
     def _scratch(self, session: Session) -> dict[str, Any]:
         return session.scratch.setdefault("baseline", {"tutor": {}, "last_invite": 0})
@@ -183,9 +224,11 @@ class BaselinePipeline:
         else:
             stage = "decide" if replies < INIT_MAX_REPLIES else "close"
         may_close = stage in ("decide", "close")
-        system = INIT_SYSTEM.format(
-            lang=LANG[session.language], stage=INIT_STAGES[stage].format(topic=session.topic)
-        ) + (INIT_VERDICT if may_close else "")
+        strict = self.strict_setup
+        system = (INIT_SYSTEM_STRICT if strict else INIT_SYSTEM).format(
+            lang=LANG[session.language],
+            stage=(INIT_STAGES_STRICT if strict else INIT_STAGES)[stage].format(topic=session.topic),
+        ) + ((INIT_VERDICT_STRICT if strict else INIT_VERDICT) if may_close else "")
         if not may_close:  # the first question and the first follow-up: always answered by the learner
             messages = [{"role": "system", "content": system}]
             if not transcript:
@@ -222,9 +265,12 @@ class BaselinePipeline:
         text = str(data.get("message") or "").strip()
         if not text:
             raise PipelineError("the setup guide returned no message")
-        await out.write(text)
         # Belt and braces: a message that ends with a question is never the last one, whatever "done" says.
-        return InitResult(done=data.get("done") in (True, "true") and not ends_with_question(text))
+        done = data.get("done") in (True, "true") and not ends_with_question(text)
+        if strict and not done:
+            text = without_closing_remark(text)
+        await out.write(text)
+        return InitResult(done=done)
 
     # ------------------------------------------------------------------ classroom
 

@@ -37,6 +37,7 @@ SESSION_PIPELINES: dict[str, str] = {
     "mock": "app.pipeline.mock:MockPipeline",
     "baseline": "app.pipeline.baseline:BaselinePipeline",
     "csl": "app.pipeline.csl:CslPipeline",
+    "csl-shorten": "app.pipeline.csl:CslShortenPipeline",  # csl + the prompt changes of 2026-11-23
 }
 
 # Pipelines that make no LLM calls. Sessions that ask for one of these need no access code.

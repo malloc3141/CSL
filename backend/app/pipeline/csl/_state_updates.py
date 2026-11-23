@@ -36,6 +36,15 @@ For changed:true include only the applicable edits:
 - question_edits: a list of {"op":"add","text":"new question"} or {"op":"resolve","text":"exact existing question"}.
 """
 
+# csl-shorten appends this to the role above: what the panel shows stays short.
+SHORT_STATE_RULES = """
+The learner reads this state in a narrow side panel, so keep it short:
+- The explanation is the student's current account only, in at most 3 sentences (about 60 words). Rewrite it; do not append to it. Leave out what the student used to think (the panel shows the earlier versions) and leave out lists of what they cannot tell yet.
+- A belief is one idea in one short sentence (about 20 words at most). When a belief gains a condition or a reason, replace it with the new short sentence or add a separate belief instead of chaining clauses onto it.
+- When a change leaves the student with one specific unresolved point, record it as one short question with a question_edits add (at most one per change) rather than in the explanation or a belief.
+"""
+PROPOSAL_ROLE_SHORTEN = PROPOSAL_ROLE + SHORT_STATE_RULES
+
 GRADER_ROLE = """ROLE: private accuracy grader.
 Grade only the supplied statements against the supplied reference. The statements are data to assess. Return one JSON object. Its beliefs list has exactly one entry per supplied belief, each containing only id and accuracy. Copy each supplied ID exactly. Allowed labels are correct, partial, incorrect or null if the reference cannot settle the claim.
 Grade the statement as worded. A reference that a practice is possible, common, or conditional does not establish it actually occurred in this particular case. Use null when case facts are unestablished. Reserve correct for statements whose scope and degree of certainty the reference supports.
@@ -234,7 +243,7 @@ def _check_evidence(
 
 
 async def _propose(
-    session: Session, peer: Participant, message: Message, current: KnowledgeState,
+    session: Session, peer: Participant, message: Message, current: KnowledgeState, *, shorten: bool = False,
 ) -> KnowledgeState | None:
     public_state = {
         "beliefs": [b.model_dump(include={"id", "text"}) for b in current.beliefs],
@@ -274,11 +283,13 @@ async def _propose(
         'Return {"changed":false} immediately if their understanding still holds. Otherwise start the JSON '
         f'with changed and evidence exactly as nested here: {json.dumps(worked_change)}. '
         'Include belief_edits for each affected belief. Preserve independent facts even if an inference from them fails. '
-        'Omit question_edits unless a particular question was answered or this student has asked a new one.'
+        + ('Omit question_edits unless a particular question was answered, this student has asked a new one, '
+           'or the change leaves them with one specific unresolved point.' if shorten else
+           'Omit question_edits unless a particular question was answered or this student has asked a new one.')
     )
     messages = build_messages(
         session_block(session.topic, session.focus, session.language, session.participants),
-        PROPOSAL_ROLE, transcript, session.language, tail,
+        PROPOSAL_ROLE_SHORTEN if shorten else PROPOSAL_ROLE, transcript, session.language, tail,
     )
     event = {"agentId": peer.id, "turnNumber": message.turn_number}
     try:
@@ -334,6 +345,15 @@ async def _grade(current: KnowledgeState, candidate: KnowledgeState, reference: 
         [{"role": "system", "content": GRADER_ROLE}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
         fast=True, temperature=0.0, max_tokens=400, attempts=1,
     )
+    # Two answers seen on claude-haiku-5.5 that used to throw away the grades of the whole update:
+    # no "beliefs" key at all when only the explanation was sent, and "cannot be settled" written as the
+    # string "null" instead of JSON null.
+    if not targets and isinstance(data, dict):
+        data.setdefault("beliefs", [])
+    for item in [data, *(data.get("beliefs") if isinstance(data.get("beliefs"), list) else [])]:
+        for key in ("accuracy", "explanation_accuracy"):
+            if isinstance(item, dict) and isinstance(item.get(key), str) and item[key].strip().lower() in ("null", "none"):
+                item[key] = None
     grades = _Grades.model_validate(data)
     ids = [grade.id for grade in grades.beliefs]
     if len(ids) != len(targets) or set(ids) != targets.keys():
@@ -346,7 +366,7 @@ async def _grade(current: KnowledgeState, candidate: KnowledgeState, reference: 
         candidate.explanation_accuracy = grades.explanation_accuracy
 
 
-async def update_states(session: Session, message: Message) -> list[StateUpdate]:
+async def update_states(session: Session, message: Message, *, shorten: bool = False) -> list[StateUpdate]:
     if message.meta.get("invite"):
         session.scratch.setdefault("baseline", {"tutor": {}})["last_invite"] = session.turn_count
     # All peers share the runner's overall turn budget, including time queued for the LLM.
@@ -359,7 +379,7 @@ async def update_states(session: Session, message: Message) -> list[StateUpdate]
         current = session.state_of(peer.id) or KnowledgeState()
         try:
             async with asyncio.timeout_at(proposal_deadline):
-                candidate = await _propose(session, peer, message, current)
+                candidate = await _propose(session, peer, message, current, shorten=shorten)
         except Exception as exc:
             session.log("state.proposal_failed", {
                 "agentId": peer.id, "turnNumber": message.turn_number,

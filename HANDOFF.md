@@ -51,7 +51,7 @@ pnpm dev
 - 로컬 프론트엔드는 **로컬 백엔드**에 붙여야 합니다. 실서버 백엔드는 `https://csl.kimhm.in` 에서 온 요청만 받습니다.
 - 실제 모델로 돌리려면 `backend/.env.example`을 `backend/.env`로 복사하고 `PIPELINE`, `OPENROUTER_API_KEY`,
   `OPENROUTER_MODEL`을 채웁니다. `.env`는 커밋되지 않습니다. 키와 토큰을 추적되는 파일에 넣지 마세요.
-- `main`에 push하면 서버에서 `uv run pytest`(백엔드 153개)와 `pnpm build`(타입 검사 포함)를 먼저 돌립니다.
+- `main`에 push하면 서버에서 `uv run pytest`(백엔드 157개)와 `pnpm build`(타입 검사 포함)를 먼저 돌립니다.
   하나라도 실패하면 배포되지 않고 실서버는 그대로입니다. push 전에 로컬에서 두 명령을 돌려 보세요.
 - push가 곧 배포이므로, 브랜치에서 작업하고 통과한 뒤 `main`에 합치는 것을 권장합니다.
 - 배포는 코드만 바꿉니다. 서버의 `backend/.env`(기본 `PIPELINE`, 키, access code)는 Hyunmin이 직접 바꿉니다.
@@ -84,6 +84,19 @@ pnpm dev
 - 피어 발화 준비: 피어가 말하기 전에 `prepare_peer_context`가 지금 무엇이 쟁점인지를 빠른 모델로 한두 문장
   뽑고(최대 8초, 실패하면 생략), 그 피어의 현재 상태와 함께 발화 요청의 꼬리에 넣습니다. `_peer_speech.py`는
   기록에 없는 경험담("예전에 배웠는데…")을 문장 단위로 걸러냅니다(`peer.history_suppressed` 이벤트).
+- 11-23(Hyunmin): `csl`에는 Learning goal(focus)이 답을 담지 않게 하는 규칙 하나만 들어갔습니다
+  (`knowledge.FOCUS_RULE`; 재생 테스트에서 답이 든 focus 8개 중 5개 → 0개).
+- **`csl-shorten`**: `csl`과 같은 코드에 11-23의 나머지 프롬프트 수정을 켠 파이프라인입니다
+  (`CslShortenPipeline`, `shorten=True`; `/dev`의 "Agents"에서 고르거나 시작 페이지를 `/?pipeline=csl-shorten`
+  으로 엽니다). 켜지는 것: tutor의 첫 질문이 답을 담지 않게 하는 지시(`TUTOR_OPEN_SHORTEN`), 피어의 첫 발언은
+  자기 설명을 그대로 말하게 하는 지시(`PEER_FIRST_MESSAGE`), "아직 모르겠다"로 끝나는 발언과 반복을 줄이는
+  역할 글(`PEER_ROLE_SHORTEN`, `PEER_TAIL_SHORTEN`), 패널에 보이는 글의 길이 규칙(`PROPOSAL_ROLE_SHORTEN`:
+  설명은 현재 생각만 3문장, belief는 한 문장, 남은 의문은 open question으로), 더 엄격한 설정 대화
+  (`BaselinePipeline(strict_setup=True)`: 사실을 말하지 않고, 질문과 "교실을 준비합니다"를 한 메시지에 섞지
+  않음). 같은 학습자 답변을 실제 모델로 재생해 비교한 결과(영어 8세션씩): "모르겠다"가 든 피어 발언
+  75/80 → 15/83, 마지막 설명 길이 평균 584자 → 287자. 그대로인 것: 틀린 설명으로 시작한 피어가 대개
+  4–5번째 메시지쯤 정답 쪽으로 넘어갑니다. `csl`을 고치면 `csl-shorten`에도 그대로 적용됩니다(바뀌는 것은
+  `*_SHORTEN` 글뿐).
 - 11-22 실서버 로그(스크립트로 돌린 csl 세션 12개): 세션당 약 $0.007, 메시지 14–16개 동안 상태 변화 2–6번,
   오류 0건.
 - 이전에 보고된 문제(상태 JSON이 `max_tokens=700`에서 잘려 5–15턴 뒤 상태가 멈춤, Seongho의 11-19 보고)는
@@ -205,6 +218,7 @@ SESSION_PIPELINES: dict[str, str] = {
     "mock": "app.pipeline.mock:MockPipeline",
     "baseline": "app.pipeline.baseline:BaselinePipeline",
     "csl": "app.pipeline.csl:CslPipeline",
+    "csl-shorten": "app.pipeline.csl:CslShortenPipeline",
 }
 ```
 
@@ -252,11 +266,15 @@ SESSION_PIPELINES: dict[str, str] = {
   일시정지됩니다.
 - 9번(상태가 언제 바뀌었는지): 상태가 바뀐 참가자는 목록에 점이 붙고, 그 변화를 일으킨 메시지 아래에
   "…'s understanding changed" 링크가 생깁니다. 패널에는 "Updated after turn N: show the message"(그 메시지로
-  이동), 이번에 바뀐 내용(`changes`의 전/후), 접혀 있는 "Earlier understanding"(이전 버전 전체)이 있습니다.
-- 두 설정은 브라우저의 localStorage(`csl.classroomPrefs`)에 남습니다.
+  이동), 이번에 바뀐 내용, 접혀 있는 "Earlier understanding"(이전 버전 전체)이 있습니다. "바뀐 내용"은
+  `changes`의 전/후 전문이 아니라 빠진 문장과 새로 들어온 문장만 보여줍니다(`diffText`).
+- 12번 일부(패널 크기): 패널 왼쪽 경계를 끌어 너비를 바꿉니다(240px부터 화면의 60%까지, 포커스 후 좌우
+  방향키, 더블클릭하면 기본값). 긴 설명은 5줄, belief는 3줄에서 접히고 "Show more"로 펼치며, belief가 4개를
+  넘으면 방금 바뀐 것을 남기고 나머지를 접습니다.
+- 두 설정과 패널 너비는 브라우저의 localStorage(`csl.classroomPrefs`)에 남습니다.
 
 **아직 UI에 없는 것.** Peer들의 상태를 나란히 비교하는 화면(10번), Open question 접기와 질문 로그(11번),
-패널 위치 옮기기(12번, 닫기는 있음), 음성 입력(14번). 아래 표의 값들로 만들 수 있습니다.
+패널 위치 옮기기(12번, 닫기와 너비 조절은 있음), 음성 입력(14번). 아래 표의 값들로 만들 수 있습니다.
 
 **백엔드 연결은 이미 있습니다.** 두 개만 쓰면 됩니다.
 
@@ -375,7 +393,7 @@ pnpm dev
 - A local frontend has to talk to a **local backend**. The live backend only accepts requests from `https://csl.kimhm.in`.
 - For real models, copy `backend/.env.example` to `backend/.env` and fill in `PIPELINE`, `OPENROUTER_API_KEY` and
   `OPENROUTER_MODEL`. `.env` is not committed. Never put keys or tokens in a tracked file.
-- On a push to `main` the server first runs `uv run pytest` (153 backend tests) and `pnpm build` (includes the type
+- On a push to `main` the server first runs `uv run pytest` (157 backend tests) and `pnpm build` (includes the type
   check). If either fails, nothing is deployed and the live site stays as it was. Run both locally before pushing.
 - A push is a deploy, so working on a branch and merging into `main` once both pass is recommended.
 - A deploy only changes code. The server's `backend/.env` (default `PIPELINE`, keys, access code) is changed by
@@ -413,6 +431,21 @@ pnpm dev
   sentences what is at issue (8 seconds at most, skipped on failure) and puts it, with that peer's current state,
   in the tail of the request. `_peer_speech.py` drops sentences that claim an experience nobody stated ("I was
   taught that…"; `peer.history_suppressed` event).
+- 11-23 (Hyunmin): `csl` got one rule, which keeps the answer out of the learning goal (focus):
+  `knowledge.FOCUS_RULE` (in the replay test, a focus that gives the answer away went from 5 of 8 to 0 of 8).
+- **`csl-shorten`**: the same code as `csl` with the other prompt changes of 11-23 switched on
+  (`CslShortenPipeline`, `shorten=True`; pick it under "Agents" on `/dev`, or open the start page as
+  `/?pipeline=csl-shorten`). What it switches on: a tutor opening that gives nothing away
+  (`TUTOR_OPEN_SHORTEN`), a peer's first message states its own explanation as it stands
+  (`PEER_FIRST_MESSAGE`), a role text with fewer messages that end on "I can't tell yet" and less repetition
+  (`PEER_ROLE_SHORTEN`, `PEER_TAIL_SHORTEN`), length rules for what the panel shows (`PROPOSAL_ROLE_SHORTEN`:
+  the explanation is the current view in 3 sentences, a belief is one sentence, an unresolved point goes to the
+  open questions), and a stricter setup chat (`BaselinePipeline(strict_setup=True)`: states no facts, never
+  mixes a question with "setting up the classroom" in one message). The same learner replies replayed on the
+  real model, 8 English sessions each: peer messages with an "I can't tell" clause 75/80 → 15/83, final
+  explanation 584 → 287 characters on average. Unchanged: a peer that starts from a wrong explanation still
+  moves to the correct one around its fourth or fifth message in most sessions. A change to `csl` applies to
+  `csl-shorten` as well (only the `*_SHORTEN` texts differ).
 - From the live log of 11-22 (12 scripted csl sessions): about $0.007 per session, 2–6 state changes over 14–16
   messages, no errors.
 - The problem reported earlier (the state JSON cut off at `max_tokens=700`, so states stopped changing after turn
@@ -542,6 +575,7 @@ SESSION_PIPELINES: dict[str, str] = {
     "mock": "app.pipeline.mock:MockPipeline",
     "baseline": "app.pipeline.baseline:BaselinePipeline",
     "csl": "app.pipeline.csl:CslPipeline",
+    "csl-shorten": "app.pipeline.csl:CslShortenPipeline",
 }
 ```
 
@@ -594,12 +628,16 @@ example), tell Hyunmin. After a change to `protocol.py` the frontend types are r
   pauses the discussion.
 - Item 9 (when a state changed): a participant whose state changed gets a dot in the list, and the message that
   caused the change gets a "…'s understanding changed" link under it. The panel has "Updated after turn N: show
-  the message" (scrolls to that message), what changed this time (before / after from `changes`) and a collapsed
-  "Earlier understanding" with every earlier version.
-- The two options are kept in the browser's localStorage (`csl.classroomPrefs`).
+  the message" (scrolls to that message), what changed this time and a collapsed "Earlier understanding" with
+  every earlier version. "What changed" shows only the sentences that left and the ones that came in
+  (`diffText`), not the full before / after from `changes`.
+- Part of item 12 (panel size): dragging the panel's left edge changes its width (240px up to 60% of the window;
+  left / right arrow keys when focused; double-click resets). A long explanation is cut at 5 lines and a belief
+  at 3, with "Show more"; with more than 4 beliefs, the ones that just changed stay and the rest are folded.
+- The two options and the panel width are kept in the browser's localStorage (`csl.classroomPrefs`).
 
 **Not in the UI yet.** A side-by-side comparison of the peers' states (item 10), collapsing Open question and a
-question log (item 11), moving the panel (item 12; closing it exists), voice input (item 14). The table below
+question log (item 11), moving the panel (item 12; closing and resizing exist), voice input (item 14). The table below
 says what to build them from.
 
 **The backend connection already exists.** Two things are all you need:

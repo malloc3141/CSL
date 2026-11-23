@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 from app import llm
 from app.pipeline.baseline import BaselinePipeline
-from app.pipeline.csl import CslPipeline
+from app.pipeline.csl import CslPipeline, CslShortenPipeline, knowledge
 from app.protocol import Message
 from app.session import Session
 
@@ -41,3 +41,9 @@ async def test_csl_classroom_changes_peer_instructions_and_preserves_draft_proce
     assert "neutral question" in csl_system["content"]
     assert actual == expected
     assert session.scratch == baseline_session.scratch
+    # The learning goal must not give the answer away: both csl and csl-shorten ask for a plain question.
+    assert knowledge.FOCUS_RULE in csl_system["content"]
+    assert knowledge.OPEN_QUESTION_RULE not in csl_system["content"]
+    await CslShortenPipeline().build_classroom(Session.restore(baseline_session.dump()))
+    shorten_system = client.complete_json.await_args_list[-1].args[0][0]["content"]
+    assert knowledge.FOCUS_RULE in shorten_system and knowledge.OPEN_QUESTION_RULE in shorten_system

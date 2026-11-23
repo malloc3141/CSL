@@ -270,6 +270,35 @@ async def test_tutor_steps_in_only_with_a_reason(moderator):
     assert (await discussion.select_speaker(make_session(ROTATION))).agent_id in ("peer1", "peer2")
 
 
+def test_csl_shorten_changes_the_texts_and_csl_keeps_its_own():
+    """csl-shorten is csl with other prompt texts; the request layout (and so the cache lanes) is the same."""
+    from app.pipeline import make_pipeline
+    from app.pipeline.csl import CslPipeline, CslShortenPipeline
+
+    assert isinstance(make_pipeline("csl-shorten"), CslShortenPipeline) and CslShortenPipeline.shorten
+    assert make_pipeline("csl-shorten").name == "csl-shorten" and not CslPipeline.shorten
+
+    s = make_session(ROTATION[:1])  # only the tutor has spoken: the next peer message is that peer's first
+    peer = discussion.SpeakerDecision(agent_id="peer1")
+    plain, short = (discussion.speak_request(s, peer, shorten=flag) for flag in (False, True))
+    assert [len(m["content"]) for m in plain] == [len(m["content"]) for m in short]
+    assert plain[0]["content"][0] == short[0]["content"][0]  # the session block is shared
+    assert plain[0]["content"][1]["text"] == discussion.PEER_ROLE
+    assert short[0]["content"][1]["text"] == discussion.PEER_ROLE_SHORTEN
+    plain_tail, short_tail = plain[-1]["content"][-1]["text"], short[-1]["content"][-1]["text"]
+    assert "say what you cannot tell yet" in plain_tail and discussion.PEER_FIRST_MESSAGE not in plain_tail
+    assert "say what you cannot tell yet" not in short_tail and "50 words at most" in short_tail
+    assert discussion.PEER_FIRST_MESSAGE in short_tail
+    # from the second message on there is no first-message instruction
+    later = discussion.speak_request(make_session(ROTATION), peer, shorten=True)[-1]["content"][-1]["text"]
+    assert discussion.PEER_FIRST_MESSAGE not in later
+
+    opening = discussion.SpeakerDecision(agent_id="tutor", directive="open")
+    empty = make_session([])
+    assert discussion.TUTOR_DIRECTIVES["open"] in discussion.speak_request(empty, opening)[-1]["content"][-1]["text"]
+    assert discussion.TUTOR_OPEN_SHORTEN in discussion.speak_request(empty, opening, shorten=True)[-1]["content"][-1]["text"]
+
+
 @pytest.mark.parametrize("reason, directive", [
     ("stagnation", "unstick"), ("off_topic", "refocus"), ("missing_information", "inform"),
 ])

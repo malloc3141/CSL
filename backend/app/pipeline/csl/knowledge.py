@@ -17,11 +17,19 @@ __all__ = ["init_turn", "build_classroom", "prepare_peer_context", "update_state
 
 log = logging.getLogger(__name__)
 _setup = BaselinePipeline()
+_setup_strict = BaselinePipeline(strict_setup=True)  # csl-shorten: the stricter setup chat
 EXTRACTION_TIMEOUT_SECONDS = 8.0
 
 CLASSROOM_PEER_RULES = """- Give each peer one coherent mental model. Accurate and mistaken beliefs can coexist when they fit together. For the same circumstances, every belief, the card description, and the explanation must agree on what happens and why.
 - Write the explanation in the peer's own voice, showing how they think it works. Leave out any built-in rebuttal, counterexample, or hint at the correct answer that the peer would not infer from their own beliefs.
 - Leave open_questions empty unless the peer has a genuinely neutral question. Asking it should make sense to someone who holds these beliefs."""
+
+# The learning goal shown above the discussion must not give the answer away (2026-11-23: on the live server
+# it did in two of four QA sessions, and the tutor's opening question repeated it).
+FOCUS_RULE = """- The focus is only the phenomenon to be explained, as one plain why/how question of at most 15 words. It does not contain the answer or a hint: it names no mechanism from the tutor reference and has no added clause such as "even though ...", "given that ...", "rather than ...", "instead of ..." or "and what role does ... play". It states nothing as fact that a peer's belief contradicts, so every peer can read it and still think their own explanation answers it. Bad: "Why does an existing bond's price fall when rates rise, even though its coupon stays the same?" (gives away a fact a peer gets wrong). Good: "Why does the price of an existing bond fall when interest rates rise?\""""
+
+# csl-shorten only.
+OPEN_QUESTION_RULE = """- A question that doubts, tests or points to an exception to the peer's own explanation ("if X causes it, why not every time?") is never neutral: leave it out of open_questions."""
 
 EXTRACTOR_ROLE = """ROLE: neutral situation reader.
 Identify what the exchange asks a participant to address, in one or two sentences in the discussion
@@ -31,15 +39,16 @@ there. Attribute guesses and beliefs to the person expressing them. Never turn t
 question or an unverified claim into a fact. Do not answer, assess correctness, or add background."""
 
 
-async def init_turn(session: Session, out: TextSink) -> InitResult:
-    return await _setup.init_turn(session, out)
+async def init_turn(session: Session, out: TextSink, *, shorten: bool = False) -> InitResult:
+    return await (_setup_strict if shorten else _setup).init_turn(session, out)
 
 
-async def build_classroom(session: Session) -> Classroom:
+async def build_classroom(session: Session, *, shorten: bool = False) -> Classroom:
+    rules = [CLASSROOM_PEER_RULES, FOCUS_RULE] + ([OPEN_QUESTION_RULE] if shorten else [])
     return await _setup.build_classroom(
         session,
         explanation="how this student currently thinks it works, in their own words, in 1-3 sentences",
-        peer_rules=CLASSROOM_PEER_RULES,
+        peer_rules="\n".join(rules),
     )
 
 

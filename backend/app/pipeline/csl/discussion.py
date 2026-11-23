@@ -76,6 +76,23 @@ If you are still stuck on a question that was already asked, say exactly what in
 
 Write only your next message: 1-3 sentences, in the discussion language, conversational, no lists. Start directly with what you say: no name, no "[T..]" label, no "Name:" prefix (those labels only mark messages in the record above)."""
 
+# The csl-shorten pipeline (CslShortenPipeline) replaces the role above with this one: the student holds
+# their explanation until a fact or reason is given against it, does not repeat themselves or close on what
+# they are unsure about, and keeps to about 60 words.
+PEER_ROLE_SHORTEN = """ROLE: one of the students. The instruction after the discussion says which student you are and gives that student's current understanding.
+
+Use only your assigned understanding and the public discussion as factual premises. You can work out a prediction from them. An outside fact, date, or measurement you happen to know is unavailable to this student unless a premise supplies it.
+You are a student discussing the case. People mentioned in the topic are people you are reasoning about. You took part in an event only if your assigned understanding or the public discussion explicitly says you did. When a belief has no stated source, give your own judgment in the first person singular: "I think that applies here." If challenged, "That was my assumption. What makes you doubt it?" You may be wrong without knowing it.
+Treat a group's habits, a previous decision, and a firsthand observation as distinct factual claims. Only mention one when you can point to where that history was supplied, with the original speaker correctly attributed. Framing an invented account as an assumption still invents an account.
+Your beliefs and your current explanation together describe what you think. A condition stated only in the explanation still applies when answering a classmate. If it says something starts, stops, or applies only in a particular case, keep that limit in your answer. You can acknowledge what someone observed, predict what you expect, or ask how the two fit together. Only give a different explanation as your own when your supplied understanding supports it.
+If someone asked you something and it has not been answered yet, answer it first, or say why you cannot answer it yet.
+If you are still stuck on a question that was already asked, say exactly what information is missing, once; do not bring the same gap up again in later messages.
+You hold your current explanation with the confidence of someone who has not been shown otherwise. A question from the tutor or a classmate is not evidence against it; keep it until someone gives a fact, an observation or a reason it cannot account for, and say so plainly when that happens. Do not argue against your own explanation or supply the fact that would undermine it yourself: that has to come from someone else.
+Changing your mind takes more than one message. When a classmate offers a competing explanation, first say what in it does not fit what you believe, or ask the question your own explanation makes you ask. Concede only the specific point that a stated fact or example forces, and keep the rest of your view. You know no more than your beliefs and explanation say: do not work out the textbook answer on your own.
+Every message moves the discussion: give a reason, an example, a consequence of your view, or a specific disagreement. Do not repeat what you or the previous speaker already said, and do not round off a message with a list of what you are unsure about.
+
+Write only your next message: 1-3 sentences and at most about 60 words, in the discussion language, conversational, no lists. Start directly with what you say: no name, no "[T..]" label, no "Name:" prefix (those labels only mark messages in the record above)."""
+
 TUTOR_ROLE = """ROLE: the tutor.
 
 Reference explanation (for your eyes only, never recite it):
@@ -96,6 +113,31 @@ TUTOR_DIRECTIVES = {
     "unstick": "The discussion is going in circles. Name the point the students keep returning to in one short phrase, then move them forward with one new fact or a small thought experiment that bears on exactly that point, or turn them to a key point nobody has examined yet. End with a question to one student by name.",
     "close": "Close the discussion. In 2-3 sentences, say what the students worked out together, and leave the learner one open question worth thinking about on their own. Do not recite the full explanation. Thank everyone in a few words.",
 }
+# csl-shorten: the opening question gives nothing away.
+TUTOR_OPEN_SHORTEN = "Open the discussion with one focused question about the focus: ask the students what they think happens and why. The students hold different, partly wrong explanations, and they should bring those out themselves, so your question gives nothing away: state no fact from your reference, do not describe the case in a way that already settles a point a student might get wrong, and offer no candidate answers to choose from. Name the situation in the words of the focus and add no detail about how the thing works (for example that an amount is fixed, that something stays the same, or what a part does). 1-2 sentences."
+# csl-shorten: a peer's first message is where its own (partly wrong) model has to come out as it stands.
+PEER_FIRST_MESSAGE = (
+    "This is your first message in the discussion. Give your current explanation as your answer, exactly as "
+    "you believe it, including the parts a teacher would call wrong: every belief listed below is something "
+    "you are sure of. Do not soften it, do not add a caveat against it, and use no fact that is not in your "
+    "beliefs or explanation. If a classmate has already said something different, say that you see it "
+    "differently and give your own account."
+)
+# How a peer's instruction ends: csl, then csl-shorten.
+PEER_TAIL = (
+    "If your understanding leaves part of the question open, say what you cannot tell yet. "
+    "Speak only the reply."
+)
+PEER_TAIL_SHORTEN = (
+    "If you already gave this explanation in an earlier message, do not say it again in full: point to "
+    "it in a few words and add ONE new thing (a concrete case, or a consequence, or exactly what you "
+    "accept or reject in a classmate's point). "
+    "Mention something you cannot tell only if you were asked for it directly and your understanding "
+    "cannot answer it, in a few words, and not if you or the previous speaker already said it. "
+    "End on your point: the last sentence is not about what you are unsure of or cannot tell. "
+    "Speak in the first person and never refer to yourself by name. "
+    "Keep it short, like a spoken turn in a seminar: 2 or 3 sentences, 50 words at most. Speak only the reply."
+)
 PEER_DIRECTIVES = {
     "react": "The learner has just spoken: respond to them directly from your own understanding (restate what you took from it, or question an assumption or a missing step).",
 }
@@ -191,8 +233,9 @@ def _respond_to_text(session: Session, decision: SpeakerDecision) -> str:
 
 
 def speak_request(
-    session: Session, decision: SpeakerDecision, *, peer_context: str | None = None
+    session: Session, decision: SpeakerDecision, *, peer_context: str | None = None, shorten: bool = False
 ) -> list[dict[str, Any]]:
+    """`shorten` selects the csl-shorten texts (CslShortenPipeline); everything else is the same request."""
     agent = session.participant(decision.agent_id or "")
     if agent is None:
         raise ValueError(f"unknown speaker {decision.agent_id!r}")
@@ -204,23 +247,27 @@ def speak_request(
             reference=notes.get("reference") or "(use your own knowledge of the topic)",
             key_points=_key_points(session),
         )
-        lines = [TUTOR_DIRECTIVES.get(decision.directive or "", ""), respond]
+        directive = TUTOR_DIRECTIVES.get(decision.directive or "", "")
+        if shorten and decision.directive == "open":
+            directive = TUTOR_OPEN_SHORTEN
+        lines = [directive, respond]
         tail = "\n".join(x for x in lines if x) + f"\nWrite the tutor's next message, in {lang}."
         tail = tail.lstrip()
     else:
-        role = PEER_ROLE
+        role = PEER_ROLE_SHORTEN if shorten else PEER_ROLE
         if peer_context is None:
             peer_context = _state_text(session.state_of(agent.id) or KnowledgeState())
+        first = shorten and not any(m.speaker_id == agent.id for m in session.transcript)
         lines = [
             f"You are {agent.name} ({agent.id}).",
             PEER_DIRECTIVES.get(decision.directive or "", ""),
             respond,
+            PEER_FIRST_MESSAGE if first else "",
             peer_context,
             f"Write {agent.name}'s reply in {lang}. Read both your beliefs and your current explanation. "
             "Choose the part that directly bears on the question. In your first sentence, use that idea "
             "to answer in your own words, keeping exactly when, why and whether you think it holds. "
-            "If your understanding leaves part of the question open, say what you cannot tell yet. "
-            "Speak only the reply.",
+            + (PEER_TAIL_SHORTEN if shorten else PEER_TAIL),
         ]
         tail = "\n".join(line for line in lines if line)
     return build_messages(_session_block(session), role, session.transcript, session.language, tail)
@@ -362,7 +409,7 @@ def _already_taken_up(transcript: list[Message], turn: Optional[int]) -> bool:
     return any((m.meta or {}).get("respondTo") == turn for m in transcript)
 
 
-async def speak(session: Session, decision: SpeakerDecision, out: TextSink) -> None:
+async def speak(session: Session, decision: SpeakerDecision, out: TextSink, *, shorten: bool = False) -> None:
     agent = session.participant(decision.agent_id or "")
     if agent is None:
         raise ValueError(f"unknown speaker {decision.agent_id!r}")
@@ -371,7 +418,7 @@ async def speak(session: Session, decision: SpeakerDecision, out: TextSink) -> N
         peer_context = await knowledge.prepare_peer_context(
             session, agent.id, respond_to=decision.meta.get("respondTo")
         )
-    request = speak_request(session, decision, peer_context=peer_context)
+    request = speak_request(session, decision, peer_context=peer_context, shorten=shorten)
     peer_sink = PeerSpeechSink(session, agent.id, out) if agent.role == "peer" else None
     sink = _PrefixStripper(peer_sink or out, [agent.name, agent.id])
     async for chunk in get_llm().stream(request, temperature=0.8, max_tokens=400):

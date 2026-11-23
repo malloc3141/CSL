@@ -7,7 +7,7 @@ import pytest
 from app import llm as llm_module
 from app.llm import extract_json
 from app.orchestrator import SessionRegistry
-from app.pipeline.baseline import BaselinePipeline
+from app.pipeline.baseline import BaselinePipeline, without_closing_remark
 from helpers import Client
 
 REFERENCE = "REFERENCE-ONLY-FOR-TUTOR"
@@ -168,3 +168,37 @@ async def test_setup_chat_ends_only_on_a_closing_message(settings, store, fake_l
         assert "Setup chat so far:\nGuide: 어떻게 이해하고 있나요?\nLearner: 답 1\n" in block and "Learner: 답 2" in block
     finally:
         await registry.stop()
+
+
+async def test_strict_setup_chat_question_does_not_announce_the_classroom(settings, store, fake_llm):
+    """Seen live: the guide asked, added "Setting up the classroom now." and said it was not done.
+    The server waited for the answer while the learner read that the classroom was coming.
+    The strict setup chat (csl-shorten) cuts the remark; the default one is left as it was."""
+    fake_llm.guide = [
+        "What do you understand so far?",
+        "Why does that follow?",
+        {"done": False, "message": "Is the payment fixed, or does it move with rates? Setting up the classroom now."},
+        {"done": True, "message": "The session is built around that link. Setting up the classroom now."},
+    ]
+    registry = SessionRegistry(settings, store, BaselinePipeline(strict_setup=True))
+    try:
+        runner = registry.create("bonds", "en")
+        s = runner.session
+        c = Client(runner)
+        for n in range(3):
+            await c.until("message.completed", lambda d: d["message"]["role"] == "system")
+            assert s.phase == "init", n
+            c.send("init.reply", text=f"reply {n + 1}")
+        await c.until("classroom.ready")
+        guide = [m.text for m in s.init_transcript if m.role == "system"]
+        assert guide[2] == "Is the payment fixed, or does it move with rates?"
+        assert guide[3].endswith("Setting up the classroom now.")
+        # the stricter texts are the ones sent: no facts in follow-ups, "done" decided first
+        assert all("State no fact about the topic" in m[0]["content"] for m in fake_llm.streams)
+        assert all('"done" first' in m[0]["content"] for m in fake_llm.guide_json_calls)
+    finally:
+        await registry.stop()
+    # only a short remark after the last question is dropped; a message without a question is left alone
+    assert without_closing_remark("Tell me how that part connects.") == "Tell me how that part connects."
+    long_tail = "Why? " + "Then describe, step by step and in your own words, everything that happens to the light after that. " * 2
+    assert without_closing_remark(long_tail) == long_tail

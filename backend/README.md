@@ -25,11 +25,11 @@ browser ── REST + WebSocket ──> FastAPI (one process)
 | `app/pipeline/base.py` | The interface the agent code implements. |
 | `app/pipeline/mock.py` | Scripted lo-fi scenario, no LLM. For frontend work and tests. |
 | `app/pipeline/baseline.py` | Simple reference pipeline on OpenRouter. The csl pipeline calls its setup chat and its classroom call. |
-| `app/pipeline/csl/` | The team's pipeline, registered as `csl`; the live server's default. `discussion.py`: who speaks next and what they say. `knowledge.py`: setup chat and classroom (the baseline's code plus csl's rules), what a peer is given before it speaks. `_state_updates.py`: knowledge-state updates (edits with quoted evidence, checked in code, then graded). `_peer_speech.py`: drops sentences in which a peer claims an experience nobody stated. `prompting.py`: request assembly laid out for the prompt cache. |
+| `app/pipeline/csl/` | The team's pipeline, registered as `csl`; the live server's default. `csl-shorten` is the same code with the prompt changes of 2026-11-23 switched on (shorter knowledge states, peers that hold their view and hedge less, a stricter setup chat), for trying them next to `csl`. `discussion.py`: who speaks next and what they say. `knowledge.py`: setup chat and classroom (the baseline's code plus csl's rules), what a peer is given before it speaks. `_state_updates.py`: knowledge-state updates (edits with quoted evidence, checked in code, then graded). `_peer_speech.py`: drops sentences in which a peer claims an experience nobody stated. `prompting.py`: request assembly laid out for the prompt cache. |
 | `app/llm.py` | OpenRouter client: streaming, JSON calls, retries, per-call usage, cost and cache log, runtime model override. Sends the session id with every call so one session stays on one provider (prompt cache). |
 | `scripts/cli.py` | Run a session in the terminal, without server or frontend. |
 | `scripts/gen_ts.py` | Regenerate `frontend/src/lib/csl/protocol.ts` after changing `protocol.py`. |
-| `tests/` | 153 tests, no network: orchestrator, REST/WebSocket, baseline, csl (discussion, classroom, state updates, peer context) and LLM client with fakes, admin API, per-session pipelines, users. |
+| `tests/` | 157 tests, no network: orchestrator, REST/WebSocket, baseline, csl (discussion, classroom, state updates, peer context) and LLM client with fakes, admin API, per-session pipelines, users. |
 
 ## Run
 
@@ -48,7 +48,7 @@ To use your own pipeline set `PIPELINE=your.module:YourPipeline` (see [docs/PIPE
 The module is imported with `backend/` as the working directory, so `backend/app/pipeline/mine.py` is
 `PIPELINE=app.pipeline.mine:MyPipeline`. The pipeline is loaded once at startup; changing it needs a restart.
 **Per-session pipelines.** `PIPELINE` is only the server's default. A single session can run on any pipeline
-registered in `SESSION_PIPELINES` (`app/pipeline/__init__.py`; now `mock`, `baseline`, `csl`): `POST /api/sessions` with
+registered in `SESSION_PIPELINES` (`app/pipeline/__init__.py`; now `mock`, `baseline`, `csl`, `csl-shorten`): `POST /api/sessions` with
 `"pipeline": "<name>"`, or the "Agents" selector on `/dev`. `GET /api/health` lists the names
 (`sessionPipelines`) and which of them are free (`freePipelines`).
 
