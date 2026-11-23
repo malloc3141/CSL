@@ -1,7 +1,7 @@
 "use client";
 
 import { useI18n } from "@/i18n";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, CornerDownLeft } from "lucide-react";
 import { ClassroomOverview } from "@/common/components/ClassroomOverview";
@@ -247,6 +247,17 @@ export default function Home() {
   const phase = snapshot?.phase ?? null;
   const phaseStep = phase === "building" ? 1 : phase === "init" || phase === null ? 0 : 2;
   const step = manual && manual.phase === phase ? Math.min(manual.step, phaseStep) : phaseStep;
+
+  useLayoutEffect(() => {
+    // Next.js preserves this page's state when it hides the route during navigation.
+    return () => {
+      setTopic("");
+      setDiscussionLanguage("");
+      setDraft("");
+      setCreateError(null);
+      setManual(null);
+    };
+  }, [sessionId]);
 
   useEffect(() => {
     const element = transcript.current;
