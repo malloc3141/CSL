@@ -226,7 +226,7 @@ function rememberAccessCode(code: string) {
 //   Classroom setup    = "ready"     the participants; "Start learning session" opens /chat
 // The session id is kept in the URL (?session=<id>), so a reload returns to the same step.
 export default function Home() {
-  const { locale, t } = useI18n();
+  const { t } = useI18n();
   const router = useRouter();
   const theme = useTheme();
   // Signing in comes first: every session started here belongs to a user (undefined = not known yet).
@@ -234,7 +234,7 @@ export default function Home() {
   const sessionId = useCurrentSessionId();
   const { snapshot, connection, error, actions } = useCslSession(sessionId ?? null);
   const [topic, setTopic] = useState("");
-  const [languageChoice, setLanguageChoice] = useState<{ sessionId: string; language: Language } | null>(null);
+  const [discussionLanguage, setDiscussionLanguage] = useState<Language | "">("");
   const [draft, setDraft] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [needsCode, setNeedsCode] = useState(false);
@@ -292,9 +292,6 @@ export default function Home() {
     if (next >= 0 && next <= phaseStep) setManual({ phase, step: next });
   };
 
-  const discussionLanguage = languageChoice && languageChoice.sessionId === sessionId
-    ? languageChoice.language
-    : snapshot?.language ?? locale;
   const shownTopic = snapshot?.topic ?? topic.trim();
   const missing = Boolean(sessionId) && !snapshot && connection === "closed";
   const opening = Boolean(sessionId) && !snapshot && !missing;
@@ -303,14 +300,19 @@ export default function Home() {
 
   const start = async () => {
     const value = topic.trim();
-    if (!value || creating) return;
+    if (!discussionLanguage || !value || creating) return;
     setCreating(true);
     setCreateError(null);
     try {
       // /?pipeline=mock runs the scripted scenario (free, no access code): for trying the UI.
       const pipeline = new URLSearchParams(window.location.search).get("pipeline");
       const code = accessCode.trim();
-      const created = await createSession({ topic: value, language: locale, accessCode: code || null, pipeline: pipeline || null });
+      const created = await createSession({
+        topic: value,
+        language: discussionLanguage,
+        accessCode: code || null,
+        pipeline: pipeline || null,
+      });
       if (code) rememberAccessCode(code);
       setCurrentSessionId(created.sessionId);
     } catch (cause) {
@@ -360,7 +362,7 @@ export default function Home() {
   const nextDisabled = !atCurrent
     ? false
     : !sessionId
-      ? creating || !topic.trim()
+      ? creating || !discussionLanguage || !topic.trim()
       : phase === "init"
         ? connection !== "open"
         : phase !== "ready" || connection !== "open";
@@ -368,7 +370,7 @@ export default function Home() {
     if (!atCurrent) return goTo(step + 1);
     if (!sessionId) return void start();
     if (phase === "init") return void actions.finishInit(); // skip the rest of the setup chat
-    if (phase === "ready") actions.startDiscussion(discussionLanguage);
+    if (phase === "ready") actions.startDiscussion();
   };
 
   return (
@@ -396,29 +398,43 @@ export default function Home() {
             <>
               {sessionId ? null : (
                 <>
-                  <TopicForm
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void start();
-                    }}
-                  >
-                    <TextField
-                      id="topic"
-                      label={t("topic")}
-                      value={topic}
-                      onChange={setTopic}
-                      placeholder={t("topicPlaceholder")}
-                    />
-                    <Button
-                      type="submit"
-                      aria-label={t("enterTopic")}
-                      title={t("enterTopic")}
-                      disabled={creating || !topic.trim()}
+                  <LanguageField>
+                    {t("discussionLanguage")}
+                    <select
+                      value={discussionLanguage}
+                      onChange={(event) => setDiscussionLanguage(event.target.value === "ko" ? "ko" : "en")}
+                      disabled={creating}
                     >
-                      <CornerDownLeft size={20} aria-hidden="true" />
-                    </Button>
-                  </TopicForm>
-                  {needsCode ? (
+                      <option value="" disabled>{t("chooseDiscussionLanguage")}</option>
+                      <option value="en">{t("english")}</option>
+                      <option value="ko">{t("korean")}</option>
+                    </select>
+                  </LanguageField>
+                  {discussionLanguage ? (
+                    <TopicForm
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void start();
+                      }}
+                    >
+                      <TextField
+                        id="topic"
+                        label={t("topic")}
+                        value={topic}
+                        onChange={setTopic}
+                        placeholder={t("topicPlaceholder")}
+                      />
+                      <Button
+                        type="submit"
+                        aria-label={t("enterTopic")}
+                        title={t("enterTopic")}
+                        disabled={creating || !topic.trim()}
+                      >
+                        <CornerDownLeft size={20} aria-hidden="true" />
+                      </Button>
+                    </TopicForm>
+                  ) : null}
+                  {discussionLanguage && needsCode ? (
                     <CodeField>
                       <TextField id="access-code" label={t("accessCode")} value={accessCode} onChange={setAccessCode} />
                     </CodeField>
@@ -472,24 +488,7 @@ export default function Home() {
               ) : null}
             </>
           ) : step === 2 ? (
-            <>
-              <ClassroomOverview topic={shownTopic || t("defaultTopic")} participants={overview} />
-              {sessionId ? (
-                <LanguageField>
-                  {t("discussionLanguage")}
-                  <select
-                    value={discussionLanguage}
-                    onChange={(event) => setLanguageChoice({
-                      sessionId,
-                      language: event.target.value === "ko" ? "ko" : "en",
-                    })}
-                  >
-                    <option value="en">{t("english")}</option>
-                    <option value="ko">{t("korean")}</option>
-                  </select>
-                </LanguageField>
-              ) : null}
-            </>
+            <ClassroomOverview topic={shownTopic || t("defaultTopic")} participants={overview} />
           ) : (
             <div>
               <h2>{shownTopic}</h2>
