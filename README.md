@@ -7,42 +7,31 @@ different, partly wrong mental models of a topic, in order to notice gaps in the
 
 Live prototype: https://csl.kimhm.in
 
-## Where the code is
+## Spec
 
-| Path | What |
-| --- | --- |
-| `backend/app/orchestrator.py` | Runs a session: setup chat → classroom → discussion. Turn loop, reading pace, pause, and the learner interjecting at any time. |
-| `backend/app/pipeline/csl/` | The agents. `discussion.py`: who speaks next and what they say. `knowledge.py`: setup chat, classroom, each peer's knowledge state. |
-| `backend/app/main.py`, `users.py`, `protocol.py` | REST + WebSocket API, nickname login, and every message on the wire. |
-| `frontend/src/app/` | Pages: `page.tsx` (start), `chat/` (classroom), `mypage/` (sign in, continue a session), `dev/` (bare page over the whole flow), `admin/` (usage, models, session history). |
-| `frontend/src/lib/csl/` | Connection to the backend: generated types, WebSocket client, `useCslSession` hook. |
-| `deploy/`, `.github/workflows/` | systemd units, proxy examples, and the deploy on every push to `main`. |
+`frontend/` is the UI (Next.js, TypeScript) and `backend/` runs the agents (Python, FastAPI).
 
-More: [HANDOFF.md](HANDOFF.md) (who works where, 한국어 / English) ·
-[backend/README.md](backend/README.md) (run, configure, deploy) ·
-[backend/docs/](backend/docs/) (protocol, pipeline interface)
+ They communicate over REST and single WebSocket per session. Entry points: `frontend/src/app/page.tsx` and `backend/app/main.py`.
+
+Main features are implemented in...
+
+| Feature | Frontend (`frontend/src/`) | Backend (`backend/app/`) |
+| --- | --- | --- |
+| Set up a classroom for a topic | `app/page.tsx` | `pipeline/csl/knowledge.py` |
+| Observe the discussion | `app/chat/ChatSession.tsx` | `orchestrator.py` (turn loop, pace, pause), `pipeline/csl/discussion.py` (who speaks next, what they say) |
+| Inspect each peer's understanding and how it changes | understanding panel in `app/chat/ChatSession.tsx` | `pipeline/csl/_state_updates.py` |
+| Explain your own understanding, get peer reactions and tutor feedback | message box in `app/chat/ChatSession.tsx` | `orchestrator.py` (the learner can interject at any time), `pipeline/csl/discussion.py` |
+
+Shared by all of them: `frontend/src/lib/csl/` (WebSocket client, `useCslSession` hook) and
+`backend/app/protocol.py` (every message on the wire; the frontend types are generated from it).
 
 ## Run locally
 
-Set up dependencies from the repository root on the first run:
-
 ```bash
-(cd backend && uv sync --extra dev)
-(cd frontend && pnpm install)
+(cd backend && uv sync --extra dev)   # first run only
+(cd frontend && pnpm install)         # first run only
+./dev.sh                              # both dev servers; Bash 4.3 or newer
 ```
 
-Start both development servers from the repository root with Bash 4.3 or newer:
-
-```bash
-./dev.sh
-```
-
-Open [the development page](http://localhost:3000/dev). The backend listens on
-`http://localhost:8000` and defaults to mock agents, which need no API key.
-Press `Ctrl+C` to stop both servers.
-
-## Built with
-
-Python, FastAPI, uvicorn, Pydantic, openai SDK (via OpenRouter), httpx, SQLite, pytest, uv ·
-Next.js, React, TypeScript, styled-components, lucide-react, Pretendard, ESLint, pnpm ·
-nginx, systemd, GitHub Actions · Coding support tool: Claude Code
+Open http://localhost:3000. The backend (`http://localhost:8000`) defaults to mock agents, which need
+no API key.
