@@ -122,12 +122,20 @@ const Item = styled.li`
   }
 `;
 
-const Status = styled.span<{ $done: boolean }>`
+const Status = styled.span<{ $phase: SessionSummary["phase"] }>`
   align-self: flex-start;
   padding: 2px 10px;
   border-radius: ${({ theme }) => theme.round.sm};
-  background: ${({ theme, $done }) => ($done ? theme.colors.GRAY[100] : theme.colors.BLUE[50])};
-  color: ${({ theme, $done }) => ($done ? theme.colors.GRAY[500] : theme.colors.BLUE[900])};
+  ${({ theme, $phase }) => {
+    if ($phase === "ended") {
+      return `background: ${theme.colors.GRAY[100]}; color: ${theme.colors.GRAY[500]};`;
+    }
+    if ($phase === "ready") {
+      return `background: ${theme.colors.GREEN[50]}; color: ${theme.colors.GREEN[900]};`;
+    }
+    const colors = $phase === "init" ? theme.colors.ORANGE : theme.colors.BLUE;
+    return `background: ${colors[50]}; color: ${colors[900]};`;
+  }}
   font-size: 12px;
   font-weight: 600;
 `;
@@ -226,7 +234,7 @@ export default function MyPage() {
                   <Item key={session.sessionId}>
                     <div>
                       <strong>{session.topic}</strong>
-                      <Status $done={done}>{session.phase ? t(PHASE_LABEL[session.phase]) : t("unknown")}</Status>
+                      <Status $phase={session.phase}>{session.phase ? t(PHASE_LABEL[session.phase]) : t("unknown")}</Status>
                       <Note>
                         {t("sessionActivity", { count: session.messageCount, date: when(session.updatedAt, locale) })}
                       </Note>

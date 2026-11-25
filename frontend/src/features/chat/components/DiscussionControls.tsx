@@ -138,7 +138,7 @@ export function DiscussionControls({
         ) : (
           <Button variant="ghost" disabled={!hasSnapshot || connection !== "open"} onClick={onResume}>
             {waiting ? t("skipForNow") : t("resumeDiscussion")}
-            <Play size={16} aria-hidden="true" />
+            {waiting ? <SkipForward size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
           </Button>
         )}
       </ControlGroup>

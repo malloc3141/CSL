@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import styled from "styled-components";
-import { ButtonLink, Navbar } from "@/common/components";
+import { Button, ButtonLink, Navbar } from "@/common/components";
 import { useCslSession, useCurrentSessionId } from "@/lib/csl";
 import type { SessionSnapshot } from "@/lib/csl";
 import { ChatParticipants } from "@/features/chat/components/ChatParticipants";
@@ -13,6 +13,7 @@ import { ChatConversation } from "@/features/chat/components/ChatConversation";
 import { DiscussionControls } from "@/features/chat/components/DiscussionControls";
 import { UnderstandingPanel } from "@/features/chat/components/UnderstandingPanel";
 import { ChatEmptyState } from "@/features/chat/components/ChatStyles";
+import { SetupDetailsDialog } from "@/features/chat/components/SetupDetailsDialog";
 
 // The understanding panel can be dragged wider or narrower (its left edge), within these limits.
 const PANEL_MIN = 240;
@@ -49,8 +50,16 @@ const Goal = styled.header`
   grid-column: 2 / -1;
   padding: 18px 24px;
   border-bottom: 1px solid ${({ theme }) => theme.colors.GRAY[200]};
-  h1 { margin: 0 0 8px; font-size: 16px; }
-  p { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
+  & > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-bottom: 8px;
+  }
+  h1 { margin: 0; font-size: 16px; }
+  & > p { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
 `;
 
 // Sits on the panel's left border, in the same grid cell, so it stays put while the panel scrolls.
@@ -136,6 +145,7 @@ export default function ChatPage() {
   const [seen, setSeen] = useState<Record<string, number> | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  const setupDialog = useRef<HTMLDialogElement>(null);
 
   const phase = snapshot?.phase ?? null;
   const status = snapshot?.status ?? null;
@@ -145,7 +155,7 @@ export default function ChatPage() {
   const activeText = active?.text ?? null;
 
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "nearest" });
+    if (!setupDialog.current?.open) bottom.current?.scrollIntoView({ block: "nearest" });
   }, [messageCount, activeText]);
 
   // A session that is still being set up belongs on the start page.
@@ -262,8 +272,16 @@ export default function ChatPage() {
           onSelect={(id) => openPanel(id, "list")}
         />
         <Goal>
-          <h1>{t("learningGoal")}</h1>
+          <div>
+            <h1>{t("learningGoal")}</h1>
+            {snapshot && (
+              <Button variant="ghost" aria-haspopup="dialog" onClick={() => setupDialog.current?.showModal()}>
+                {t("viewSetupDetails")}
+              </Button>
+            )}
+          </div>
           <p>{snapshot?.focus ?? snapshot?.topic ?? "…"}</p>
+          {snapshot && <SetupDetailsDialog dialogRef={setupDialog} snapshot={snapshot} />}
         </Goal>
         <ChatConversation
           messages={messages}

@@ -67,7 +67,8 @@ def test_sessions_belong_to_the_user_who_created_them(tmp_path):
         assert [s["topic"] for s in mine] == ["second", "first"]  # newest first, only ana's
         assert mine[0]["language"] == "ko" and mine[0]["phase"] == "init"
         assert mine[1]["sessionId"] == first["sessionId"] and mine[1]["phase"] == "discussion"
-        assert mine[1]["messageCount"] >= 2  # the guide's message and the first discussion message
+        assert mine[0]["messageCount"] == 0
+        assert mine[1]["messageCount"] == 1
         assert [s["sessionId"] for s in http.get(f"/api/users/{ben}/sessions").json()] == [other["sessionId"]]
 
         rows = {r["sessionId"]: r for r in http.get("/api/admin/sessions", headers=AUTH).json()}
@@ -85,7 +86,9 @@ def test_sessions_belong_to_the_user_who_created_them(tmp_path):
         restored = http.get(f"/api/sessions/{first['sessionId']}").json()
         assert restored["userId"] == ana and restored["phase"] == "discussion"
         assert restored["status"] == "paused"  # comes back paused, with everything that was said
-        assert len(restored["messages"]) == mine[1]["messageCount"] >= 2
+        assert len(restored["messages"]) >= 2
+        assert mine[0]["messageCount"] == 0
+        assert mine[1]["messageCount"] == 1
 
 
 async def test_database_from_before_users_is_upgraded(tmp_path):

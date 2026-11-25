@@ -10,8 +10,7 @@ const Sidebar = styled.aside`
   padding: 20px 12px;
   border-right: 1px solid ${({ theme }) => theme.colors.GRAY[200]};
   background: ${({ theme }) => theme.colors.GRAY[100]};
-  h2 { margin: 0 0 24px; font-size: 16px; }
-  h3 { margin: 0 0 12px; font-size: 14px; }
+  h2 { margin: 0 0 12px; font-size: 16px; }
 `;
 
 const Participants = styled.div`
@@ -61,8 +60,7 @@ export function ChatParticipants({ participants, selected, seen, versionOf, onSe
 
   return (
     <Sidebar aria-label={t("classroomParticipants")}>
-      <h2>{t("classroom")}</h2>
-      <h3>{t("participants")}</h3>
+      <h2>{t("participants")}</h2>
       <Participants>
         {participants.map((participant) => (
           <Participant

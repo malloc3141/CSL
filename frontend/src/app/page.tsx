@@ -3,7 +3,7 @@
 import { useI18n } from "@/i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, CornerDownLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, CornerDownLeft } from "lucide-react";
 import { ClassroomOverview } from "@/common/components/ClassroomOverview";
 import type { OverviewParticipant } from "@/common/components/ClassroomOverview";
 import styled, { keyframes, useTheme } from "styled-components";
@@ -189,12 +189,25 @@ const LanguageField = styled.label`
   font-weight: 600;
 
   select {
-    padding: 8px 12px;
+    appearance: none;
+    padding: 8px 36px 8px 12px;
     border: 1px solid ${({ theme }) => theme.colors.GRAY[200]};
     border-radius: ${({ theme }) => theme.round.sm};
     background: ${({ theme }) => theme.colors.WHITE};
     color: inherit;
     font: inherit;
+  }
+`;
+
+const LanguageSelect = styled.span`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+
+  svg {
+    position: absolute;
+    inset-inline-end: 12px;
+    pointer-events: none;
   }
 `;
 
@@ -411,15 +424,18 @@ export default function Home() {
                 <>
                   <LanguageField>
                     {t("discussionLanguage")}
-                    <select
-                      value={discussionLanguage}
-                      onChange={(event) => setDiscussionLanguage(event.target.value === "ko" ? "ko" : "en")}
-                      disabled={creating}
-                    >
-                      <option value="" disabled>{t("chooseDiscussionLanguage")}</option>
-                      <option value="en">{t("english")}</option>
-                      <option value="ko">{t("korean")}</option>
-                    </select>
+                    <LanguageSelect>
+                      <select
+                        value={discussionLanguage}
+                        onChange={(event) => setDiscussionLanguage(event.target.value === "ko" ? "ko" : "en")}
+                        disabled={creating}
+                      >
+                        <option value="" disabled>{t("chooseDiscussionLanguage")}</option>
+                        <option value="en">{t("english")}</option>
+                        <option value="ko">{t("korean")}</option>
+                      </select>
+                      <ChevronDown size={16} aria-hidden="true" />
+                    </LanguageSelect>
                   </LanguageField>
                   {discussionLanguage ? (
                     <TopicForm

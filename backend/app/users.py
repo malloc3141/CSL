@@ -63,7 +63,8 @@ def users_router() -> APIRouter:
             runner = runners.get(item.session_id)
             if runner is not None:  # in memory: fresher than the last save
                 s = runner.session
-                item.phase, item.status, item.message_count = s.phase, s.status, len(s.messages)
+                item.phase, item.status = s.phase, s.status
+                item.message_count = sum(message.channel == "discussion" for message in s.messages)
             out.append(item.wire())
         return out
 

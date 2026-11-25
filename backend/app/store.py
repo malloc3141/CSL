@@ -203,7 +203,8 @@ class Store:
             "json_extract(payload, '$.snapshot.pipeline'), "
             "json_extract(payload, '$.snapshot.phase'), "
             "json_extract(payload, '$.snapshot.status'), "
-            "json_array_length(payload, '$.snapshot.messages') "
+            "(SELECT COUNT(*) FROM json_each(payload, '$.snapshot.messages') AS message "
+            "WHERE json_extract(message.value, '$.channel') = 'discussion') "
             "FROM sessions WHERE user_id = ? ORDER BY created_at DESC",
             (user_id,),
         )
