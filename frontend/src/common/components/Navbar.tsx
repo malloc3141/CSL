@@ -3,7 +3,6 @@
 import { useI18n } from "@/i18n";
 import { useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Languages, UserRound } from "lucide-react";
 import styled from "styled-components";
 import { useCurrentUser } from "@/lib/csl";
@@ -66,6 +65,7 @@ const ProfileButton = styled(IconButton)`
   min-width: 44px;
   gap: 8px;
   padding-inline: 10px;
+  text-decoration: none;
 `;
 
 const UserName = styled.span`
@@ -104,23 +104,28 @@ export function LanguageButton({ onClick }: { onClick?: () => void }) {
 
 export function Navbar({ onProfileClick, onLanguageClick }: NavbarProps) {
   const { t } = useI18n();
-  const router = useRouter();
   const user = useCurrentUser();
   const profileLabel = user ? t("myPageUser", { name: user.name }) : t("signIn");
+  const profileContent = (
+    <>
+      <UserRound size={22} aria-hidden="true" />
+      {user ? <UserName>{user.name}</UserName> : null}
+    </>
+  );
 
   return (
     <Navigation aria-label={t("navigation")}>
       <Brand href="/" aria-label={t("home")}>CSL</Brand>
       <Actions>
-        <ProfileButton
-          type="button"
-          aria-label={profileLabel}
-          title={profileLabel}
-          onClick={onProfileClick ?? (() => router.push("/mypage"))}
-        >
-          <UserRound size={22} aria-hidden="true" />
-          {user ? <UserName>{user.name}</UserName> : null}
-        </ProfileButton>
+        {onProfileClick ? (
+          <ProfileButton type="button" aria-label={profileLabel} title={profileLabel} onClick={onProfileClick}>
+            {profileContent}
+          </ProfileButton>
+        ) : (
+          <ProfileButton as={Link} href="/mypage" prefetch aria-label={profileLabel} title={profileLabel}>
+            {profileContent}
+          </ProfileButton>
+        )}
         <LanguageButton onClick={onLanguageClick} />
       </Actions>
     </Navigation>

@@ -1,6 +1,6 @@
 export { MessageBubble } from "./MessageBubble";
 export type { BubbleRole } from "./MessageBubble";
-export { Button } from "./Button";
+export { Button, ButtonLink } from "./Button";
 export { Composer } from "./Composer";
 export { ParticipantChip } from "./ParticipantChip";
 export type { ParticipantKind } from "./ParticipantChip";

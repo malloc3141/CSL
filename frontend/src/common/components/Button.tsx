@@ -1,6 +1,8 @@
 "use client";
 
 import styled, { css } from "styled-components";
+import Link from "next/link";
+import type { ComponentProps } from "react";
 
 type ButtonVariant = "primary" | "ghost";
 
@@ -12,6 +14,7 @@ const StyledButton = styled.button<{ $variant: ButtonVariant }>`
   font-weight: 600;
   line-height: 1.4;
   cursor: pointer;
+  text-decoration: none;
 
   &:disabled {
     cursor: not-allowed;
@@ -45,4 +48,14 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 export function Button({ variant = "primary", type = "button", ...props }: ButtonProps) {
   return <StyledButton $variant={variant} type={type} {...props} />;
+}
+
+const StyledButtonLink = styled(StyledButton)`
+  display: inline-block;
+`;
+
+type ButtonLinkProps = Omit<ComponentProps<typeof Link>, "as"> & { variant?: ButtonVariant };
+
+export function ButtonLink({ variant = "primary", ...props }: ButtonLinkProps) {
+  return <StyledButtonLink as={Link} $variant={variant} {...props} />;
 }

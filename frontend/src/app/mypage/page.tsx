@@ -5,10 +5,9 @@ import { useI18n } from "@/i18n";
 // Sessions come from the server (GET /api/users/{id}/sessions), so the list is the same in every browser.
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ArrowRight, Plus } from "lucide-react";
 import styled, { useTheme } from "styled-components";
-import { Button, LoginCard, Navbar, ProfileImage } from "@/common/components";
+import { Button, ButtonLink, LoginCard, Navbar, ProfileImage } from "@/common/components";
 import { fetchUserSessions, signOut, useCurrentUser } from "@/lib/csl";
 import type { SessionSummary } from "@/lib/csl";
 
@@ -110,7 +109,7 @@ const Item = styled.li`
     overflow-wrap: anywhere;
   }
 
-  > button {
+  > a {
     display: inline-flex;
     align-items: center;
     flex-shrink: 0;
@@ -137,7 +136,7 @@ const Actions = styled.div`
   display: flex;
   gap: 8px;
 
-  > button {
+  > a {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -164,7 +163,6 @@ function when(seconds: number, locale: string) {
 
 export default function MyPage() {
   const { locale, t } = useI18n();
-  const router = useRouter();
   const theme = useTheme();
   const user = useCurrentUser();
   const userId = user?.userId ?? null;
@@ -233,20 +231,20 @@ export default function MyPage() {
                         {t("sessionActivity", { count: session.messageCount, date: when(session.updatedAt, locale) })}
                       </Note>
                     </div>
-                    <Button variant={done ? "ghost" : "primary"} onClick={() => router.push(href)}>
+                    <ButtonLink variant={done ? "ghost" : "primary"} href={href}>
                       {done ? t("view") : t("continue")}
                       <ArrowRight size={16} aria-hidden="true" />
-                    </Button>
+                    </ButtonLink>
                   </Item>
                 );
               })}
             </List>
           ) : null}
           <Actions>
-            <Button variant={sessions && sessions.length > 0 ? "ghost" : "primary"} onClick={() => router.push("/")}>
+            <ButtonLink variant={sessions && sessions.length > 0 ? "ghost" : "primary"} href="/">
               <Plus size={16} aria-hidden="true" />
               {t("startNew")}
-            </Button>
+            </ButtonLink>
           </Actions>
         </Card>
       </Page>
