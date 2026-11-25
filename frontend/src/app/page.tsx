@@ -246,6 +246,7 @@ export default function Home() {
   const user = useCurrentUser();
   const sessionId = useCurrentSessionId();
   const { snapshot, connection, error, actions } = useCslSession(sessionId ?? null);
+  const { t: discussionT } = useI18n(snapshot?.language);
   const [topic, setTopic] = useState("");
   const [discussionLanguage, setDiscussionLanguage] = useState<Language | "">("");
   const [draft, setDraft] = useState("");
@@ -365,9 +366,9 @@ export default function Home() {
           .map((participant) => ({
             name: participant.name,
             peerIndex: null,
-            basis: t("tutorBasis"),
-            belief: t("tutorBelief"),
-            note: t("tutorNote"),
+            basis: discussionT("tutorBasis"),
+            belief: discussionT("tutorBelief"),
+            note: discussionT("tutorNote"),
           })),
       ]
     : undefined;
@@ -515,7 +516,11 @@ export default function Home() {
               ) : null}
             </>
           ) : step === 2 ? (
-            <ClassroomOverview topic={shownTopic || t("defaultTopic")} participants={overview} />
+            <ClassroomOverview
+              topic={shownTopic || t("defaultTopic")}
+              participants={overview}
+              discussionLanguage={snapshot?.language}
+            />
           ) : (
             <div>
               <h2>{shownTopic}</h2>

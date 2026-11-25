@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import styled from "styled-components";
 import { Button } from "@/common/components";
 import { useI18n } from "@/i18n";
-import type { Accuracy, KnowledgeState, Participant, StateChange, StateVersion } from "@/lib/csl";
+import type { Accuracy, KnowledgeState, Language, Participant, StateChange, StateVersion } from "@/lib/csl";
 import { ChatCheckbox, ChatEmptyState } from "./ChatStyles";
 
 const Understanding = styled.aside`
@@ -297,6 +297,7 @@ type UnderstandingPanelProps = {
   panelRef: Ref<HTMLElement>;
   open: boolean;
   person: Participant | null;
+  discussionLanguage?: Language;
   versions?: StateVersion[];
   showAccuracy: boolean;
   pauseOnPanel: boolean;
@@ -307,10 +308,11 @@ type UnderstandingPanelProps = {
 };
 
 export function UnderstandingPanel({
-  panelRef, open, person, versions, showAccuracy, pauseOnPanel,
+  panelRef, open, person, discussionLanguage, versions, showAccuracy, pauseOnPanel,
   onClose, onJumpTo, onShowAccuracyChange, onPauseOnPanelChange,
 }: UnderstandingPanelProps) {
   const { t } = useI18n();
+  const { t: discussionT } = useI18n(discussionLanguage);
   const current = versions?.[versions.length - 1];
   const earlier = versions ? versions.slice(0, -1).reverse() : [];
   // A change that only re-graded the accuracy has no wording to show.
@@ -400,8 +402,8 @@ export function UnderstandingPanel({
             </>
           ) : (
             <>
-              <h4>{t("role")}</h4>
-              <p>{person.description ?? t("tutorRole")}</p>
+              <h4>{discussionT("role")}</h4>
+              <p>{person.description ?? discussionT("tutorRole")}</p>
             </>
           )}
         </div>

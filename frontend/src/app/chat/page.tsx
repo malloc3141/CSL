@@ -336,6 +336,7 @@ export default function ChatPage() {
           panelRef={panel}
           open={panelOpen}
           person={person}
+          discussionLanguage={snapshot?.language}
           versions={versions}
           showAccuracy={prefs.showAccuracy}
           pauseOnPanel={prefs.pauseOnPanel}

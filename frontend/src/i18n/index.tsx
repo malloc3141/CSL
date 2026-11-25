@@ -18,8 +18,9 @@ export function I18nProvider({ locale, children }: { locale: Locale; children: R
   return <LocaleContext.Provider value={locale}>{children}</LocaleContext.Provider>;
 }
 
-export function useI18n() {
-  const locale = useContext(LocaleContext);
+export function useI18n(overrideLocale?: Locale) {
+  const siteLocale = useContext(LocaleContext);
+  const locale = overrideLocale ?? siteLocale;
   const t = (key: MessageKey, values?: Record<string, string | number>) =>
     messages[locale][key].replace(/\{(\w+)\}/g, (match, name: string) =>
       String(values?.[name] ?? match),

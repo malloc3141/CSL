@@ -1,6 +1,7 @@
 "use client";
 
 import { useI18n } from "@/i18n";
+import type { Language } from "@/lib/csl";
 import styled from "styled-components";
 import { peerColor } from "@/styles/peerColors";
 
@@ -119,12 +120,15 @@ function demoParticipants(t: ReturnType<typeof useI18n>["t"]): OverviewParticipa
 export function ClassroomOverview({
   topic,
   participants,
+  discussionLanguage,
 }: {
   topic: string;
+  discussionLanguage?: Language;
   /** The session's participants (snapshot.participants with their initial states). */
   participants?: OverviewParticipant[];
 }) {
   const { t } = useI18n();
+  const { t: discussionT } = useI18n(discussionLanguage);
   const people = participants ?? demoParticipants(t);
   return (
     <Overview>
@@ -137,9 +141,9 @@ export function ClassroomOverview({
           <Participant key={participant.name}>
             <Badge $peerIndex={participant.peerIndex}>{participant.name}</Badge>
             <Details>
-              <dt>{t("creationBasis")}</dt>
+              <dt>{(participant.peerIndex === null ? discussionT : t)("creationBasis")}</dt>
               <dd>{participant.basis}</dd>
-              <dt>{t("initialRole")}</dt>
+              <dt>{(participant.peerIndex === null ? discussionT : t)("initialRole")}</dt>
               <dd>{participant.belief}</dd>
             </Details>
             <Note>{participant.note ?? ""}</Note>
